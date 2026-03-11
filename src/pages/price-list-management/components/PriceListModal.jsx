@@ -20,13 +20,21 @@ const emptyRow = () => ({
 });
 
 const calcPreTax = (priceTaxInc, taxRate, vatType) => {
-  const p = parseFloat(priceTaxInc);
+  const p = parseFloat(String(priceTaxInc).replace(/,/g, ''));
   const r = parseFloat(taxRate) || 0;
   if (isNaN(p) || p === 0) return '';
   if (vatType === 'Inclusive' && r > 0) {
     return (p / (1 + r / 100))?.toFixed(4);
   }
   return p?.toFixed(4);
+};
+
+// Format price for display: thousand separators + 2 decimals (0.00 when zero)
+const formatPriceDisplay = (v) => {
+  if (v === '' || v == null) return '';
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  if (isNaN(n)) return String(v);
+  return n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const PriceListModal = ({ isOpen, onClose, onSuccess, editItem }) => {
@@ -47,6 +55,7 @@ const PriceListModal = ({ isOpen, onClose, onSuccess, editItem }) => {
   const [dropdownIdx, setDropdownIdx] = useState(null);
   const [dropdownField, setDropdownField] = useState(null); // 'code' | 'name'
   const [dropdownQuery, setDropdownQuery] = useState('');
+  const [focusedPriceIdx, setFocusedPriceIdx] = useState(null);
 
   const lineItemsRef = useRef(lineItems);
   const firstInputRef = useRef(null);
@@ -212,11 +221,12 @@ const PriceListModal = ({ isOpen, onClose, onSuccess, editItem }) => {
   };
 
   const handlePriceChange = (idx, val) => {
-    if (val !== '' && !/^\d*\.?\d*$/?.test(val)) return;
+    const raw = val.replace(/,/g, '');
+    if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
     const item = lineItemsRef?.current?.[idx];
     const taxRate = taxRates?.find(t => t?.id === item?.tax_rate_id);
-    const preTax = calcPreTax(val, taxRate?.rate, item?.vat_type || 'Inclusive');
-    setRow(idx, { price_tax_inc: val, pre_tax_price: preTax });
+    const preTax = calcPreTax(raw, taxRate?.rate, item?.vat_type || 'Inclusive');
+    setRow(idx, { price_tax_inc: raw, pre_tax_price: preTax });
   };
 
   const handleTaxRateChange = (idx, taxRateId) => {
@@ -543,8 +553,10 @@ const PriceListModal = ({ isOpen, onClose, onSuccess, editItem }) => {
                             ref={el => rowRefs.current[`price_${idx}`] = el}
                             type="text"
                             inputMode="decimal"
-                            value={item?.price_tax_inc}
+                            value={focusedPriceIdx === idx ? (item?.price_tax_inc ?? '') : formatPriceDisplay(item?.price_tax_inc)}
                             onChange={e => handlePriceChange(idx, e?.target?.value)}
+                            onFocus={() => setFocusedPriceIdx(idx)}
+                            onBlur={() => setFocusedPriceIdx(null)}
                             onKeyDown={e => handlePriceKeyDown(e, idx)}
                             placeholder="0.00"
                             className="w-full h-6 px-1.5 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:border-primary text-right tabular-nums"

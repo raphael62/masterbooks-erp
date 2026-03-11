@@ -32,53 +32,86 @@ const addDays = (dateStr, days) => {
   return d?.toISOString()?.slice(0, 10);
 };
 
-const fetchPriceForProduct = async (productCode, invoiceDate, vendorId, vendorPriceTypeCache) => {
-  if (!productCode || !invoiceDate) return null;
+// Fetch price from price list (product_code or product_id)
+const fetchPriceForProduct = async (productCode, productId, invoiceDate, vendorId, vendorPriceTypeCache) => {
+  if ((!productCode && !productId) || !invoiceDate) return null;
   try {
     const vendorPriceTypeId = vendorPriceTypeCache?.current?.[vendorId] || null;
 
-    // Query price_list_items joined to price_list_headers
-    // Filter: active header, effective_date (start_date) <= invoice_date, product_code matches
-    const { data, error: qErr } = await supabase
+    // Query price_list_items joined to price_list_headers (filter in JS - embed filters can be finicky)
+    let query = supabase
       .from('price_list_items')
       .select(`
         id,
         product_code,
+        product_id,
         pack_unit,
         price,
+        pre_tax_price,
+        price_tax_inc,
         unit_of_measure,
         unit_price,
         tax_rate_id,
         vat_type,
-        price_list_headers!inner(
+        price_list_headers!price_list_header_id(
           id,
           status,
           start_date,
           price_type_id
         )
-      `)
-      .eq('product_code', productCode)
-      .lte('price_list_headers.start_date', invoiceDate);
+      `);
+
+    // Match by product_code and/or product_id
+    if (productCode && productId) {
+      query = query.or(`product_code.eq.${productCode},product_id.eq.${productId}`);
+    } else if (productCode) {
+      query = query.eq('product_code', productCode);
+    } else if (productId) {
+      query = query.eq('product_id', productId);
+    } else {
+      return null;
+    }
+
+    let { data, error: qErr } = await query;
+
+    // Fallback: try header_id FK if price_list_header_id returns nothing (some items use header_id)
+    if ((qErr || !data?.length) && (productCode || productId)) {
+      let fbQuery = supabase.from('price_list_items').select(`
+        id, product_code, product_id, pack_unit, price, pre_tax_price, price_tax_inc,
+        unit_of_measure, unit_price, tax_rate_id, vat_type,
+        price_list_headers!header_id(id, status, start_date, price_type_id)
+      `);
+      if (productCode && productId) fbQuery = fbQuery.or(`product_code.eq.${productCode},product_id.eq.${productId}`);
+      else if (productCode) fbQuery = fbQuery.eq('product_code', productCode);
+      else fbQuery = fbQuery.eq('product_id', productId);
+      const fb = await fbQuery;
+      if (!fb.error && fb.data?.length) {
+        data = fb.data;
+        qErr = null;
+      }
+    }
 
     if (qErr || !data || data.length === 0) return null;
 
-    // Sort by start_date descending (most recent first)
-    const sorted = [...data].sort((a, b) => {
-      const dateA = a?.price_list_headers?.start_date || '';
-      const dateB = b?.price_list_headers?.start_date || '';
-      return dateB.localeCompare(dateA);
-    });
+    // Filter by header existing and start_date <= invoice_date, sort by start_date desc
+    const withHeader = data.filter(r => r?.price_list_headers != null);
+    const sorted = withHeader
+      .filter(r => {
+        const d = r?.price_list_headers?.start_date;
+        return d && String(d) <= String(invoiceDate);
+      })
+      .sort((a, b) => {
+        const dateA = a?.price_list_headers?.start_date || '';
+        const dateB = b?.price_list_headers?.start_date || '';
+        return dateB.localeCompare(dateA);
+      });
 
     // Prefer vendor's price_type match
     let matched = null;
     if (vendorPriceTypeId) {
       matched = sorted.find(r => r?.price_list_headers?.price_type_id === vendorPriceTypeId);
     }
-    // Fallback: any active price list for that product
-    if (!matched) {
-      matched = sorted[0];
-    }
-
+    if (!matched) matched = sorted[0];
     if (!matched) return null;
 
     // Fetch tax rate if tax_rate_id is present
@@ -92,18 +125,18 @@ const fetchPriceForProduct = async (productCode, invoiceDate, vendorId, vendorPr
       taxRatePercent = parseFloat(trData?.rate) || 0;
     }
 
-    // price column in price_list_items is the tax-inclusive price
-    const priceTaxInc = parseFloat(matched?.price) || parseFloat(matched?.unit_price) || null;
+    // Use pre_tax_price for cost (ex-tax), else price/unit_price/price_tax_inc
+    const preTaxPrice = parseFloat(matched?.pre_tax_price);
+    const priceTaxInc = parseFloat(matched?.price_tax_inc) || parseFloat(matched?.price) || parseFloat(matched?.unit_price) || null;
     const vatType = matched?.vat_type || 'exclusive';
 
-    // Derive price_ex_tax from price_tax_inc minus VAT (6 decimal precision)
     let priceExTax = null;
-    if (priceTaxInc !== null) {
+    if (!isNaN(preTaxPrice) && preTaxPrice > 0) {
+      priceExTax = parseFloat(preTaxPrice.toFixed(6));
+    } else if (priceTaxInc !== null) {
       if (vatType === 'inclusive' && taxRatePercent > 0) {
-        // price_ex_tax = price_tax_inc / (1 + rate/100)
         priceExTax = parseFloat((priceTaxInc / (1 + taxRatePercent / 100)).toFixed(6));
       } else {
-        // If exclusive or no tax rate, price is already ex-tax
         priceExTax = parseFloat(priceTaxInc.toFixed(6));
       }
     }
@@ -118,6 +151,30 @@ const fetchPriceForProduct = async (productCode, invoiceDate, vendorId, vendorPr
     };
   } catch (e) {
     console.error('fetchPriceForProduct error:', e);
+    return null;
+  }
+};
+
+// Fallback: last purchase price for this product (from past purchase invoices)
+const fetchLastPurchasePrice = async (productId) => {
+  if (!productId) return null;
+  try {
+    const { data: rows } = await supabase
+      .from('purchase_invoice_items')
+      .select('price_ex_tax, purchase_invoices(invoice_date)')
+      .eq('product_id', productId)
+      .not('price_ex_tax', 'is', null);
+
+    if (!rows?.length) return null;
+    const sorted = [...rows].sort((a, b) => {
+      const dA = a?.purchase_invoices?.invoice_date || '';
+      const dB = b?.purchase_invoices?.invoice_date || '';
+      return dB.localeCompare(dA);
+    });
+    const p = parseFloat(sorted[0]?.price_ex_tax);
+    return isNaN(p) ? null : p;
+  } catch (e) {
+    console.error('fetchLastPurchasePrice error:', e);
     return null;
   }
 };
@@ -512,10 +569,17 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
       return updated;
     });
 
-    // Now try to fetch price from price list
+    // Fetch price: price list first, then last purchase price as fallback
     const invoiceDate = form?.invoice_date || today();
     const vendorId = form?.supplier_id || null;
-    const priceData = await fetchPriceForProduct(prod?.product_code, invoiceDate, vendorId, vendorPriceTypeCache);
+    let priceData = await fetchPriceForProduct(prod?.product_code, prod?.id, invoiceDate, vendorId, vendorPriceTypeCache);
+
+    if (!priceData) {
+      const lastPrice = await fetchLastPurchasePrice(prod?.id);
+      if (lastPrice != null) {
+        priceData = { price: lastPrice, price_tax_inc: null, pack_unit: null, unit_of_measure: null, tax_rate_percent: 0, vat_type: 'exclusive' };
+      }
+    }
 
     if (priceData) {
       setItems(prev => {
