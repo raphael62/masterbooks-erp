@@ -62,6 +62,8 @@
     "build": "vite build --sourcemap",
     "serve": "vite preview",
     "create-super-user": "node scripts/create-super-user.js",
+    "create-user": "node scripts/create-user.js",
+    "sync-user-profiles": "node scripts/sync-user-profiles.js",
     "create-master-data-tables": "node scripts/create-master-data-tables.js",
     "clear-dummy-data": "node scripts/clear-dummy-data.js"
   },
