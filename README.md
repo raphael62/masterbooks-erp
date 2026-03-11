@@ -78,6 +78,18 @@ masterbooks_erp/
 - `npm run serve` – Preview production build
 - `npm run create-super-user` – Create admin user (requires SUPABASE_SERVICE_ROLE_KEY in .env)
 
+## Deploy to Vercel (Publish Online)
+
+1. Go to **[vercel.com](https://vercel.com)** and sign in with GitHub
+2. Click **Add New** → **Project**
+3. Import **raphael62/masterbooks-erp** from your GitHub
+4. Add **Environment Variables**:
+   - `VITE_SUPABASE_URL` – Your Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY` – Your Supabase anon key
+5. Click **Deploy**
+
+Vercel will build and publish your app. You'll get a URL like `https://masterbooks-erp.vercel.app`. Each push to `main` will trigger a new deployment.
+
 ## Tech Stack
 
 - React 18, Vite, Tailwind CSS
