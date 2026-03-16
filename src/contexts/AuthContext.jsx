@@ -1,106 +1,137 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-const AuthContext = createContext({})
+const AuthContext = createContext({});
 
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider')
+    throw new Error('useAuth must be used within AuthProvider');
   }
-  return context
-}
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
-  const [userProfile, setUserProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [profileLoading, setProfileLoading] = useState(false)
+  const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const mountedRef = useRef(true);
 
-  // Isolated async operations - never called from auth callbacks
-  const profileOperations = {
-    async load(userId) {
-      if (!userId) return
-      setProfileLoading(true)
-      try {
-        const { data, error } = await supabase?.from('user_profiles')?.select('*')?.eq('id', userId)?.single()
-        if (!error) setUserProfile(data)
-      } catch (error) {
-        console.error('Profile load error:', error)
-      } finally {
-        setProfileLoading(false)
+  // Load user profile
+  const loadProfile = useCallback(async (userId) => {
+    if (!userId || !mountedRef.current) return;
+    setProfileLoading(true);
+    try {
+      const { data, error } = await supabase
+        ?.from('user_profiles')
+        ?.select('*')
+        ?.eq('id', userId)
+        ?.single();
+      if (!error && mountedRef.current) {
+        setUserProfile(data);
       }
-    },
-
-    clear() {
-      setUserProfile(null)
-      setProfileLoading(false)
-    }
-  }
-
-  // Auth state handlers - PROTECTED from async modification
-  const authStateHandlers = {
-    // This handler MUST remain synchronous - Supabase requirement
-    onChange: (event, session) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-      
-      if (session?.user) {
-        profileOperations?.load(session?.user?.id) // Fire-and-forget
-      } else {
-        profileOperations?.clear()
+    } catch (error) {
+      console.error('Profile load error:', error);
+    } finally {
+      if (mountedRef.current) {
+        setProfileLoading(false);
       }
     }
-  }
+  }, []);
+
+  // Clear profile
+  const clearProfile = useCallback(() => {
+    setUserProfile(null);
+    setProfileLoading(false);
+  }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     // Initial session check
-    supabase?.auth?.getSession()?.then(({ data: { session } }) => {
-      authStateHandlers?.onChange(null, session)
-    })
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase?.auth?.getSession();
+        if (mountedRef.current) {
+          setUser(session?.user ?? null);
+          setLoading(false);
+          if (session?.user) {
+            loadProfile(session.user.id);
+          }
+        }
+      } catch (error) {
+        console.error('Session init error:', error);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    };
 
-    // CRITICAL: This must remain synchronous
+    initSession();
+
+    // Listen for auth state changes
     const { data: { subscription } } = supabase?.auth?.onAuthStateChange(
-      authStateHandlers?.onChange
-    )
+      (event, session) => {
+        if (!mountedRef.current) return;
+        setUser(session?.user ?? null);
+        setLoading(false);
+        
+        if (session?.user) {
+          loadProfile(session.user.id);
+        } else {
+          clearProfile();
+        }
+      }
+    );
 
-    return () => subscription?.unsubscribe()
-  }, [])
+    return () => {
+      mountedRef.current = false;
+      subscription?.unsubscribe();
+    };
+  }, [loadProfile, clearProfile]);
 
   // Auth methods
-  const signIn = async (email, password) => {
+  const signIn = useCallback(async (email, password) => {
     try {
-      const { data, error } = await supabase?.auth?.signInWithPassword({ email, password })
-      return { data, error }
+      const { data, error } = await supabase?.auth?.signInWithPassword({ email, password });
+      return { data, error };
     } catch (error) {
-      return { error: { message: 'Network error. Please try again.' } }
+      return { error: { message: 'Network error. Please try again.' } };
     }
-  }
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
-      const { error } = await supabase?.auth?.signOut()
+      const { error } = await supabase?.auth?.signOut();
       if (!error) {
-        setUser(null)
-        profileOperations?.clear()
+        setUser(null);
+        clearProfile();
       }
-      return { error }
+      return { error };
     } catch (error) {
-      return { error: { message: 'Network error. Please try again.' } }
+      return { error: { message: 'Network error. Please try again.' } };
     }
-  }
+  }, [clearProfile]);
 
-  const updateProfile = async (updates) => {
-    if (!user) return { error: { message: 'No user logged in' } }
+  const updateProfile = useCallback(async (updates) => {
+    if (!user) return { error: { message: 'No user logged in' } };
     
     try {
-      const { data, error } = await supabase?.from('user_profiles')?.update(updates)?.eq('id', user?.id)?.select()?.single()
-      if (!error) setUserProfile(data)
-      return { data, error }
+      const { data, error } = await supabase
+        ?.from('user_profiles')
+        ?.update(updates)
+        ?.eq('id', user?.id)
+        ?.select()
+        ?.single();
+      if (!error && mountedRef.current) {
+        setUserProfile(data);
+      }
+      return { data, error };
     } catch (error) {
-      return { error: { message: 'Network error. Please try again.' } }
+      return { error: { message: 'Network error. Please try again.' } };
     }
-  }
+  }, [user]);
 
   const value = {
     user,
