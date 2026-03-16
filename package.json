@@ -1,6 +1,6 @@
 {
   "name": "masterbooks-erp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "rocketCritical": {
     "dependencies": [
@@ -20,6 +20,7 @@
       "postcss"
     ],
     "scripts": [
+      "dev",
       "start",
       "build",
       "serve"
@@ -59,6 +60,7 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "dev": "npx vite",
     "start": "npx vite",
     "build": "vite build --sourcemap",
     "serve": "vite preview",
