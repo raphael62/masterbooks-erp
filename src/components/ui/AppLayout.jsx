@@ -77,10 +77,12 @@ const AppLayout = ({ children }) => {
       />
 
       {/* Main Content */}
-      <main className={`pt-28 transition-all duration-300 ease-in-out ${
+      <main className={`min-h-screen transition-all duration-300 ease-in-out ${
         isSidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'
       }`}>
-        {children}
+        <div className="pt-28">
+          {children}
+        </div>
       </main>
 
       {/* Real-time Task Authorization Notifications */}

@@ -170,8 +170,8 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse, activeModule = 'dashbo
               <div className="flex items-center space-x-2 flex-1 min-w-0">
                 <span className="font-medium text-sm truncate">{item?.label}</span>
                 {item?.badge && (
-                  <span className={`px-2 py-0.5 text-xs rounded-full ${
-                    item?.badge === 'Future' ?'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' :'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                  <span className={`px-2 py-0.5 text-xs rounded-full border ${
+                    item?.badge === 'Future' ? 'bg-warning/10 text-warning border-warning/20' : 'bg-secondary/10 text-secondary border-secondary/20'
                   }`}>
                     {item?.badge}
                   </span>
@@ -188,7 +188,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse, activeModule = 'dashbo
     <>
       {/* Desktop Sidebar */}
       <aside className={`
-        fixed left-0 top-28 bottom-0 bg-card border-r border-border z-100 transition-all duration-300 ease-in-out
+        fixed left-0 top-28 bottom-0 bg-card border-r border-border z-50 transition-all duration-300 ease-in-out
         ${isCollapsed ? 'w-16' : 'w-64'}
         hidden lg:block
       `}>
@@ -236,7 +236,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse, activeModule = 'dashbo
 
       {/* Mobile Sidebar Overlay */}
       <div className={`
-        lg:hidden fixed inset-0 z-300 transition-opacity duration-300 ease-in-out
+        lg:hidden fixed inset-0 z-40 transition-opacity duration-300 ease-in-out
         ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}
       `}>
         <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onToggleCollapse} />
