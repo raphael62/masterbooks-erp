@@ -20,6 +20,7 @@
       "postcss"
     ],
     "scripts": [
+      "dev",
       "start",
       "build",
       "serve"
