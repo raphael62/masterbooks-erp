@@ -2,12 +2,10 @@ import React from 'react';
 import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../contexts/PermissionsContext';
-import AppLayout from './ui/AppLayout';
 
 /**
  * Protects routes that require authentication.
  * Also enforces page-level permissions: redirects to dashboard if user lacks access.
- * Wraps authenticated pages with AppLayout.
  */
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -31,13 +29,7 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/dashboard" state={{ message: 'You do not have access to that page' }} replace />;
   }
 
-  const content = children ? children : <Outlet />;
-
-  return (
-    <AppLayout>
-      {content}
-    </AppLayout>
-  );
+  return children ? children : <Outlet />;
 };
 
 export default ProtectedRoute;

@@ -77,8 +77,8 @@ const AppLayout = ({ children }) => {
       />
 
       {/* Main Content */}
-      <main className={`pt-28 pb-4 px-4 lg:px-6 transition-all duration-300 ease-in-out ${
-        isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-80'
+      <main className={`pt-28 transition-all duration-300 ease-in-out ${
+        isSidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'
       }`}>
         {children}
       </main>
