@@ -3,10 +3,10 @@ import Icon from '../../../components/AppIcon';
 
 const ValueDisplay = ({ value }) => {
   if (value === null || value === undefined) return <span className="text-muted-foreground italic">null</span>;
-  if (typeof value === 'boolean') return <span className="text-purple-600 dark:text-purple-400">{value?.toString()}</span>;
-  if (typeof value === 'number') return <span className="text-blue-600 dark:text-blue-400">{value}</span>;
+  if (typeof value === 'boolean') return <span className="text-primary">{value?.toString()}</span>;
+  if (typeof value === 'number') return <span className="text-secondary">{value}</span>;
   if (typeof value === 'object') return <span className="text-muted-foreground">{JSON.stringify(value)}</span>;
-  return <span className="text-green-700 dark:text-green-400">"{String(value)}"</span>;
+  return <span className="text-success">"{String(value)}"</span>;
 };
 
 const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
@@ -18,7 +18,7 @@ const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
     if (keys?.length === 0) return <span className="text-xs text-muted-foreground">New record</span>;
     return (
       <div>
-        <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-1 text-xs text-green-600 hover:underline">
+        <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-1 text-xs text-success hover:underline">
           <Icon name={expanded ? 'ChevronUp' : 'ChevronDown'} size={12} />
           {keys?.length} fields inserted
         </button>
@@ -27,7 +27,7 @@ const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
             {keys?.map(k => (
               <div key={k} className="flex items-start gap-2 text-xs">
                 <span className="text-muted-foreground font-mono w-32 flex-shrink-0 truncate">{k}:</span>
-                <span className="text-green-600"><ValueDisplay value={newData?.[k]} /></span>
+                <span className="text-success"><ValueDisplay value={newData?.[k]} /></span>
               </div>
             ))}
           </div>
@@ -37,7 +37,7 @@ const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
   }
 
   if (action === 'DELETE') {
-    return <span className="text-xs text-red-500 font-medium">Record deleted</span>;
+    return <span className="text-xs text-error font-medium">Record deleted</span>;
   }
 
   // UPDATE
@@ -49,7 +49,7 @@ const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
 
   return (
     <div>
-      <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+      <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-1 text-xs text-secondary hover:underline">
         <Icon name={expanded ? 'ChevronUp' : 'ChevronDown'} size={12} />
         {fields?.length} field{fields?.length !== 1 ? 's' : ''} changed
       </button>
@@ -78,10 +78,10 @@ const ChangesViewer = ({ changedFields, oldData, newData, action }) => {
                 {fields?.map(([field, change]) => (
                   <tr key={field}>
                     <td className="px-3 py-1.5 font-mono text-foreground">{field}</td>
-                    <td className="px-3 py-1.5 text-red-600 max-w-[120px] truncate">
+                    <td className="px-3 py-1.5 text-error max-w-[120px] truncate">
                       <ValueDisplay value={change?.before} />
                     </td>
-                    <td className="px-3 py-1.5 text-green-600 max-w-[120px] truncate">
+                    <td className="px-3 py-1.5 text-success max-w-[120px] truncate">
                       <ValueDisplay value={change?.after} />
                     </td>
                   </tr>

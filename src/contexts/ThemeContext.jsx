@@ -99,33 +99,50 @@ const applyThemeToCSSVars = (theme) => {
 export const ThemeProvider = ({ children }) => {
   const { user } = useAuth();
   const [currentThemeId, setCurrentThemeId] = useState(DEFAULT_THEME_ID);
+  const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const currentTheme = THEMES?.[currentThemeId] || THEMES?.[DEFAULT_THEME_ID];
 
-  // Load theme from Supabase or localStorage
+  // Load theme and dark mode preference from Supabase or localStorage
   useEffect(() => {
     const loadTheme = async () => {
       // Try localStorage first for instant load
-      const cached = localStorage.getItem('masterbooks_theme');
-      if (cached && THEMES?.[cached]) {
-        setCurrentThemeId(cached);
-        applyThemeToCSSVars(THEMES?.[cached]);
+      const cachedTheme = localStorage.getItem('masterbooks_theme');
+      const cachedDarkMode = localStorage.getItem('masterbooks_darkmode') === 'true';
+      
+      if (cachedTheme && THEMES?.[cachedTheme]) {
+        setCurrentThemeId(cachedTheme);
+        applyThemeToCSSVars(THEMES?.[cachedTheme]);
       } else {
         applyThemeToCSSVars(THEMES?.[DEFAULT_THEME_ID]);
       }
+
+      // Apply dark mode preference
+      setDarkMode(cachedDarkMode);
+      applyDarkMode(cachedDarkMode);
 
       // If user is logged in, fetch from Supabase
       if (user?.id) {
         setLoading(true);
         try {
-          const { data, error } = await supabase?.from('user_preferences')?.select('theme_id')?.eq('user_id', user?.id)?.single();
+          const { data, error } = await supabase
+            ?.from('user_preferences')
+            ?.select('theme_id, dark_mode')
+            ?.eq('user_id', user?.id)
+            ?.single();
 
-          if (!error && data?.theme_id && THEMES?.[data?.theme_id]) {
-            setCurrentThemeId(data?.theme_id);
-            applyThemeToCSSVars(THEMES?.[data?.theme_id]);
-            localStorage.setItem('masterbooks_theme', data?.theme_id);
+          if (!error && data) {
+            if (data?.theme_id && THEMES?.[data?.theme_id]) {
+              setCurrentThemeId(data?.theme_id);
+              applyThemeToCSSVars(THEMES?.[data?.theme_id]);
+              localStorage.setItem('masterbooks_theme', data?.theme_id);
+            }
+            const isDarkMode = data?.dark_mode === true;
+            setDarkMode(isDarkMode);
+            applyDarkMode(isDarkMode);
+            localStorage.setItem('masterbooks_darkmode', isDarkMode ? 'true' : 'false');
           }
         } catch (err) {
           console.error('Failed to load theme preference:', err);
@@ -142,6 +159,14 @@ export const ThemeProvider = ({ children }) => {
     if (!THEMES?.[themeId]) return;
     setCurrentThemeId(themeId);
     applyThemeToCSSVars(THEMES?.[themeId]);
+  }, []);
+
+  const applyDarkMode = useCallback((isDark) => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, []);
 
   const saveTheme = useCallback(async (themeId) => {
@@ -166,6 +191,27 @@ export const ThemeProvider = ({ children }) => {
     }
   }, [user?.id, applyTheme]);
 
+  const toggleDarkMode = useCallback(async (isDark) => {
+    setDarkMode(isDark);
+    applyDarkMode(isDark);
+    localStorage.setItem('masterbooks_darkmode', isDark ? 'true' : 'false');
+
+    if (!user?.id) return { error: null };
+
+    setSaving(true);
+    try {
+      const { error } = await supabase?.from('user_preferences')?.upsert(
+          { user_id: user?.id, dark_mode: isDark, updated_at: new Date()?.toISOString() },
+          { onConflict: 'user_id' }
+        );
+      return { error };
+    } catch (err) {
+      return { error: err };
+    } finally {
+      setSaving(false);
+    }
+  }, [user?.id, applyDarkMode]);
+
   const resetTheme = useCallback(async () => {
     return saveTheme(DEFAULT_THEME_ID);
   }, [saveTheme]);
@@ -174,10 +220,12 @@ export const ThemeProvider = ({ children }) => {
     currentThemeId,
     currentTheme,
     themes: THEMES,
+    darkMode,
     loading,
     saving,
     applyTheme,
     saveTheme,
+    toggleDarkMode,
     resetTheme,
   };
 

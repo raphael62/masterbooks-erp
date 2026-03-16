@@ -231,20 +231,26 @@ const Header = ({ onMenuToggle, isMenuOpen = false, activeModule, onModuleChange
 
       {/* Command Palette Modal */}
       {isCommandPaletteOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-400 flex items-start justify-center pt-20">
-          <div className="bg-card rounded-lg shadow-modal w-full max-w-2xl mx-4 animate-fadeIn">
+        <div 
+          className="fixed inset-0 bg-black/50 z-[400] flex items-start justify-center pt-20"
+          onClick={() => setIsCommandPaletteOpen(false)}
+        >
+          <div 
+            className="bg-card rounded-lg shadow-modal w-full max-w-2xl mx-4 animate-fadeIn"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-4 border-b border-border">
               <div className="relative">
                 <Icon 
                   name="Search" 
                   size={16} 
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" 
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" 
                 />
                 <input
                   type="text"
                   placeholder="Type a command or search..."
                   autoFocus
-                  className="w-full pl-10 pr-4 py-3 text-sm bg-transparent border-none focus:outline-none"
+                  className="w-full pl-10 pr-4 py-3 text-sm bg-transparent border-none focus:outline-none text-foreground placeholder:text-muted-foreground"
                   onKeyDown={(e) => {
                     if (e?.key === 'Escape') {
                       setIsCommandPaletteOpen(false);
@@ -254,17 +260,26 @@ const Header = ({ onMenuToggle, isMenuOpen = false, activeModule, onModuleChange
               </div>
             </div>
             <div className="p-2 max-h-96 overflow-y-auto">
-              <div className="text-xs font-medium text-white px-3 py-2">Quick Actions</div>
+              <div className="text-xs font-medium text-muted-foreground px-3 py-2">Quick Actions</div>
               <div className="space-y-1">
-                <div className="px-3 py-2 text-sm hover:bg-accent rounded-md cursor-pointer">
+                <button 
+                  onClick={() => { navigate('/sales-order-management'); setIsCommandPaletteOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-accent rounded-md cursor-pointer"
+                >
                   Create New Sales Order
-                </div>
-                <div className="px-3 py-2 text-sm hover:bg-accent rounded-md cursor-pointer">
+                </button>
+                <button 
+                  onClick={() => { navigate('/customer-management'); setIsCommandPaletteOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-accent rounded-md cursor-pointer"
+                >
                   Add Customer
-                </div>
-                <div className="px-3 py-2 text-sm hover:bg-accent rounded-md cursor-pointer">
+                </button>
+                <button 
+                  onClick={() => { navigate('/inventory-management'); setIsCommandPaletteOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-accent rounded-md cursor-pointer"
+                >
                   View Inventory
-                </div>
+                </button>
               </div>
             </div>
           </div>
