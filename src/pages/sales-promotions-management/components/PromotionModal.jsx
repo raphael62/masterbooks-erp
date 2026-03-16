@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { Gift, Trash2 } from 'lucide-react';
@@ -36,6 +37,8 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
     happy_hour_end: '',
   });
   const [rules, setRules] = useState([emptyRule()]);
+  const [productDropdown, setProductDropdown] = useState(null); // { ruleIdx, field: 'buy'|'reward', rect: DOMRect }
+  const [productDropdownQuery, setProductDropdownQuery] = useState('');
   const [priceTypes, setPriceTypes] = useState([]);
   const [locations, setLocations] = useState([]);
   const [products, setProducts] = useState([]);
@@ -60,6 +63,7 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
 
   useEffect(() => {
     if (!isOpen) return;
+    setProductDropdown(null);
     loadLookups();
     if (editItem?.id) {
       setForm({
@@ -163,6 +167,22 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
 
   const addRule = () => setRules(prev => [...prev, emptyRule()]);
   const removeRule = (idx) => setRules(prev => prev?.filter((_, i) => i !== idx));
+
+  const getFilteredProducts = useCallback((query) => {
+    if (!products?.length) return [];
+    if (!query?.trim()) return products?.slice(0, 25) || [];
+    const q = String(query).toLowerCase().trim();
+    return products?.filter(p =>
+      p?.product_code?.toLowerCase()?.includes(q) ||
+      p?.product_name?.toLowerCase()?.includes(q)
+    )?.slice(0, 25) || [];
+  }, [products]);
+
+  const openProductDropdown = (idx, field, inputEl, query) => {
+    const rect = inputEl?.getBoundingClientRect?.();
+    setProductDropdown(rect ? { ruleIdx: idx, field, rect } : { ruleIdx: idx, field });
+    setProductDropdownQuery(query ?? '');
+  };
 
   const validate = () => {
     const e = {};
@@ -356,7 +376,7 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="text-xs font-semibold text-foreground">Rules</h3>
-                <p className="text-xs text-muted-foreground">Buy Product A → Get Product B (e.g. Buy 10 Get 1)</p>
+                <p className="text-xs text-muted-foreground">Buy Product A → Get Product B (e.g. Buy 10 Get 1). Type to search products.</p>
               </div>
               <button type="button" onClick={addRule} className="flex items-center gap-1 h-7 px-2 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90">
                 + Add Rule
@@ -379,10 +399,15 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
                   {rules?.map((rule, idx) => (
                     <tr key={rule?._key} className="border-b border-border/50">
                       <td className="px-2 py-1">
-                        <select value={rule?.buy_product_id || ''} onChange={e => setRuleProduct(idx, 'buy', e?.target?.value)} className="w-full h-7 px-1 text-xs border border-border rounded bg-background">
-                          <option value="">— Select —</option>
-                          {products?.map(p => <option key={p?.id} value={p?.id}>{p?.product_code} - {p?.product_name}</option>)}
-                        </select>
+                        <input
+                          type="text"
+                          value={productDropdown?.ruleIdx === idx && productDropdown?.field === 'buy' ? productDropdownQuery : (rule?.buy_product_code && rule?.buy_product_name ? `${rule.buy_product_code} - ${rule.buy_product_name}` : '')}
+                          onChange={e => openProductDropdown(idx, 'buy', e.target, e?.target?.value)}
+                          onFocus={e => openProductDropdown(idx, 'buy', e.target, rule?.buy_product_code && rule?.buy_product_name ? `${rule.buy_product_code} - ${rule.buy_product_name}` : '')}
+                          onBlur={() => setTimeout(() => setProductDropdown(null), 200)}
+                          placeholder="Type to search..."
+                          className="w-full h-7 px-1 text-xs border border-border rounded bg-background"
+                        />
                       </td>
                       <td className="px-2 py-1">
                         <input type="number" min="0" step="1" value={rule?.buy_qty} onChange={e => setRule(idx, 'buy_qty', e?.target?.value)} className="w-full h-7 px-1 text-xs border border-border rounded text-right" />
@@ -393,10 +418,15 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
                         </select>
                       </td>
                       <td className="px-2 py-1">
-                        <select value={rule?.reward_product_id || ''} onChange={e => setRuleProduct(idx, 'reward', e?.target?.value)} className="w-full h-7 px-1 text-xs border border-border rounded bg-background">
-                          <option value="">— Select —</option>
-                          {products?.map(p => <option key={p?.id} value={p?.id}>{p?.product_code} - {p?.product_name}</option>)}
-                        </select>
+                        <input
+                          type="text"
+                          value={productDropdown?.ruleIdx === idx && productDropdown?.field === 'reward' ? productDropdownQuery : (rule?.reward_product_code && rule?.reward_product_name ? `${rule.reward_product_code} - ${rule.reward_product_name}` : '')}
+                          onChange={e => openProductDropdown(idx, 'reward', e.target, e?.target?.value)}
+                          onFocus={e => openProductDropdown(idx, 'reward', e.target, rule?.reward_product_code && rule?.reward_product_name ? `${rule.reward_product_code} - ${rule.reward_product_name}` : '')}
+                          onBlur={() => setTimeout(() => setProductDropdown(null), 200)}
+                          placeholder="Type to search..."
+                          className="w-full h-7 px-1 text-xs border border-border rounded bg-background"
+                        />
                       </td>
                       <td className="px-2 py-1">
                         <input type="number" min="0" step="1" value={rule?.reward_qty} onChange={e => setRule(idx, 'reward_qty', e?.target?.value)} className="w-full h-7 px-1 text-xs border border-border rounded text-right" />
@@ -413,6 +443,11 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
                       </td>
                     </tr>
                   ))}
+                  {rules?.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-4 text-center text-xs text-muted-foreground">No rules. Click + Add Rule.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -425,6 +460,41 @@ const PromotionModal = ({ isOpen, onClose, onSaved, editItem }) => {
           </button>
         </div>
       </div>
+
+      {/* Product dropdown - portal to avoid overflow clipping */}
+      {productDropdown && productDropdown.rect && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed z-[9999] bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded shadow-xl max-h-48 overflow-y-auto min-w-[200px]"
+          style={{
+            left: productDropdown.rect.left,
+            top: productDropdown.rect.bottom + 4,
+            width: Math.max(productDropdown.rect.width, 200),
+          }}
+        >
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); const i = productDropdown.ruleIdx; const f = productDropdown.field; if (f === 'buy') { setRule(i, 'buy_product_id', null); setRule(i, 'buy_product_code', ''); setRule(i, 'buy_product_name', ''); } else { setRule(i, 'reward_product_id', null); setRule(i, 'reward_product_code', ''); setRule(i, 'reward_product_name', ''); } setProductDropdown(null); }}
+            className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+          >
+            — Clear —
+          </button>
+          {getFilteredProducts(productDropdownQuery)?.length > 0 ? (
+            getFilteredProducts(productDropdownQuery).map(p => (
+              <button
+                key={p?.id}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); setRuleProduct(productDropdown.ruleIdx, productDropdown.field, p?.id); setProductDropdown(null); }}
+                className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block"
+              >
+                {p?.product_code} - {p?.product_name}
+              </button>
+            ))
+          ) : (
+            <div className="px-2 py-2 text-xs text-muted-foreground">No products found</div>
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

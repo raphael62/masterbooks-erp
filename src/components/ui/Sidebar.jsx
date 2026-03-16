@@ -31,6 +31,7 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse, activeModule = 'dashbo
     sales: [
       { id: 'overview', label: 'Overview', path: '/sales-overview-dashboard', icon: 'LayoutDashboard' },
       { id: 'customers', label: 'Customers', path: '/customer-management', icon: 'Users' },
+      { id: 'customer-statement', label: 'Customer Statement', path: '/customer-statement', icon: 'FileBarChart' },
       { id: 'customer-value-stmt', label: 'Customer Value Stmt', path: '/sales/customer-value-stmt', icon: 'FileBarChart' },
       { id: 'customer-empties-stmt', label: 'Customer Empties Stmt', path: '/sales/customer-empties-stmt', icon: 'PackageOpen' },
       { id: 'sales-orders', label: 'Sales Orders', path: '/sales-order-management', icon: 'ShoppingCart' },
@@ -54,10 +55,11 @@ const Sidebar = ({ isCollapsed = false, onToggleCollapse, activeModule = 'dashbo
       { id: 'products', label: 'Products', path: '/product-management', icon: 'Package' },
       { id: 'stock-by-location', label: 'Stock by Location', path: '/stock-levels-by-location', icon: 'MapPin' },
       { id: 'stock-movements', label: 'Stock Movements', path: '/stock-movements', icon: 'ArrowRightLeft' },
+      { id: 'change-history', label: 'Change History', path: '/inventory-change-history', icon: 'History' },
       { id: 'returnable-glass', label: 'Returnable Glass', path: '/returnable-glass-management', icon: 'GlassWater' },
       { id: 'stock-on-hand', label: 'Stock on Hand', path: '/inventory/stock-on-hand', icon: 'Boxes' },
       { id: 'adjustments', label: 'Adjustments', path: '/inventory/adjustments', icon: 'Edit3' },
-      { id: 'transfers', label: 'Transfers', path: '/inventory/transfers', icon: 'ArrowRight' },
+      { id: 'transfers', label: 'Transfers', path: '/stock-transfer', icon: 'ArrowRight' },
       { id: 'empties-ledger', label: 'Empties Ledger', path: '/inventory/empties-ledger', icon: 'BookOpen' }
     ],
     production: [

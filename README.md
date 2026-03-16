@@ -54,10 +54,15 @@ Multi-company, multi-location ERP with online/offline capabilities. Built with R
 4. Run migrations from `supabase/migrations/` (in order) in the SQL Editor
 5. Create at least one user in Authentication → Users
 
+## Documentation
+
+- **[Form Standards](docs/Form-Standards.md)** – UI patterns for invoice and order forms (filterable dropdowns, price formatting, Btl/Ctn qty behavior, etc.). Use as the standard when building or updating forms.
+
 ## Project Structure
 
 ```
 masterbooks_erp/
+├── docs/           # Documentation (Form-Standards.md, etc.)
 ├── src/
 │   ├── components/    # Shared UI (Header, Sidebar, etc.)
 │   ├── contexts/      # AuthContext, CompanyLocationContext, ThemeContext

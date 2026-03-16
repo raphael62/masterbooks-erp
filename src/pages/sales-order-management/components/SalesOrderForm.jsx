@@ -104,6 +104,42 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
   const [priceTypes, setPriceTypes] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [dropdownIdx, setDropdownIdx] = useState(null);
+  const [dropdownField, setDropdownField] = useState(null);
+  const [dropdownQuery, setDropdownQuery] = useState('');
+  const [formSearchField, setFormSearchField] = useState(null);
+  const [formSearchQuery, setFormSearchQuery] = useState('');
+  const [focusedPriceTaxIncIdx, setFocusedPriceTaxIncIdx] = useState(null);
+
+  const getFilteredProducts = useCallback((query) => {
+    if (!query || !products?.length) return products?.slice(0, 20) || [];
+    const q = String(query).toLowerCase().trim();
+    return products.filter(p => p?.product_code?.toLowerCase()?.includes(q) || p?.product_name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [products]);
+  const getFilteredCustomers = useCallback((query) => {
+    if (!customers?.length) return [];
+    if (!query?.trim()) return customers.slice(0, 30);
+    const q = String(query).toLowerCase().trim();
+    return customers.filter(c => c?.customer_code?.toLowerCase()?.includes(q) || c?.customer_name?.toLowerCase()?.includes(q)).slice(0, 30);
+  }, [customers]);
+  const getFilteredSalesReps = useCallback((query) => {
+    if (!salesReps?.length) return [];
+    if (!query?.trim()) return salesReps.slice(0, 20);
+    const q = String(query).toLowerCase().trim();
+    return salesReps.filter(r => r?.exec_code?.toLowerCase()?.includes(q) || r?.full_name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [salesReps]);
+  const getFilteredLocations = useCallback((query) => {
+    if (!locations?.length) return [];
+    if (!query?.trim()) return locations.slice(0, 20);
+    const q = String(query).toLowerCase().trim();
+    return locations.filter(l => l?.code?.toLowerCase()?.includes(q) || l?.name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [locations]);
+  const getFilteredPriceTypes = useCallback((query) => {
+    if (!priceTypes?.length) return [];
+    if (!query?.trim()) return priceTypes.slice(0, 20);
+    const q = String(query).toLowerCase().trim();
+    return priceTypes.filter(p => p?.price_type_name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [priceTypes]);
 
   const loadReferenceData = async () => {
     try {
@@ -161,6 +197,12 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (col === 'item_code' || col === 'item_name') {
+      const query = col === 'item_code' ? items[idx]?.item_code : items[idx]?.item_name;
+      const matches = getFilteredProducts(query || '');
+      if (matches?.length > 0) {
+        handleProductSelect(idx, matches[0]?.id);
+        setDropdownIdx(null);
+      }
       focusCell(idx, 'ctn_qty');
     } else if (col === 'ctn_qty') {
       setItems(prev => {
@@ -325,21 +367,21 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
     setItems(prev => {
       const updated = [...prev];
       const item = { ...updated?.[idx], [field]: value };
+      if (field === 'price_tax_inc') {
+        const raw = String(value).replace(/,/g, '');
+        if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return prev;
+        item.price_tax_inc = raw;
+      }
+      // Btl Qty → Ctn Qty only (Ctn Qty does NOT convert back to Btl Qty)
       if (field === 'btl_qty') {
         const btl = parseFloat(value);
         const pack = parseFloat(item?.pack_unit) || 1;
         if (!isNaN(btl) && value !== '' && value !== null) item.ctn_qty = pack > 0 ? parseFloat((btl / pack).toFixed(4)) : 0;
         else if (value === '' || value === null) item.ctn_qty = '';
       }
-      if (field === 'ctn_qty') {
-        const ctn = parseFloat(value);
-        const pack = parseFloat(item?.pack_unit) || 1;
-        if (!isNaN(ctn) && value !== '' && value !== null) item.btl_qty = parseFloat((ctn * pack).toFixed(4));
-        else if (value === '' || value === null) item.btl_qty = '';
-      }
       if (field === 'price_tax_inc') {
         const ctn = parseFloat(item?.ctn_qty) || 0;
-        const priceTaxInc = parseFloat(value) || 0;
+        const priceTaxInc = parseFloat(String(value).replace(/,/g, '')) || 0;
         const taxRate = parseFloat(item?.tax_rate) || 0;
         item.price_ex_tax = taxRate > 0 ? parseFloat((priceTaxInc / (1 + taxRate / 100)).toFixed(6)) : parseFloat(priceTaxInc.toFixed(6));
         item.pre_tax = parseFloat((ctn * item.price_ex_tax).toFixed(2));
@@ -546,34 +588,45 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
             {/* Row 1: Customer | Sales Rep | Location-Out */}
             <div className="flex items-center">
               <span className={`${labelCls} w-32`} style={{ color: 'var(--color-primary)' }}>Customer</span>
-              <select
-                value={form?.customer_id || ''}
-                onChange={e => {
-                  const c = customers?.find(x => x?.id === e?.target?.value);
-                  if (c) handleCustomerSelect(c);
-                  else setForm(f => ({ ...f, customer_id: '', customer_code: '', customer_name: '', customer_price_type_id: null, balance_outstanding: '' }));
-                }}
-                className={inputCls}
-              >
-                <option value="">-- Select Customer --</option>
-                {customers?.map(c => (
-                  <option key={c?.id} value={c?.id}>{c?.customer_code} - {c?.customer_name}</option>
-                ))}
-              </select>
+              <div className="flex-1 relative">
+                <input type="text" value={formSearchField === 'customer' ? formSearchQuery : (form?.customer_code && form?.customer_name ? `${form.customer_code} - ${form.customer_name}` : '')} onChange={e => { setFormSearchField('customer'); setFormSearchQuery(e?.target?.value); }} onFocus={() => { setFormSearchField('customer'); setFormSearchQuery(form?.customer_code && form?.customer_name ? `${form.customer_code} - ${form.customer_name}` : ''); }} onBlur={() => setTimeout(() => setFormSearchField(null), 200)} placeholder="Search customer..." className={inputCls} />
+                {formSearchField === 'customer' && getFilteredCustomers(formSearchQuery)?.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-white border border-gray-300 shadow-lg rounded max-h-48 overflow-y-auto">
+                    <button type="button" onMouseDown={e => { e.preventDefault(); setForm(f => ({ ...f, customer_id: '', customer_code: '', customer_name: '', customer_price_type_id: null, balance_outstanding: '' })); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                    {getFilteredCustomers(formSearchQuery).map(c => (
+                      <button key={c?.id} type="button" onMouseDown={e => { e.preventDefault(); handleCustomerSelect(c); setFormSearchField(null); setFormSearchQuery(''); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{c?.customer_code} - {c?.customer_name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center">
               <span className={`${labelCls} w-28`} style={{ color: 'var(--color-primary)' }}>Sales Rep</span>
-              <select value={form?.sales_rep_id} onChange={e => handleSalesRepChange(e?.target?.value)} className={inputCls}>
-                <option value="">-- Select --</option>
-                {salesReps?.map(r => <option key={r?.id} value={r?.id}>{r?.exec_code} - {r?.full_name}</option>)}
-              </select>
+              <div className="flex-1 relative">
+                <input type="text" value={formSearchField === 'sales_rep' ? formSearchQuery : (() => { const r = salesReps?.find(x => x?.id === form?.sales_rep_id); return r ? `${r?.exec_code} - ${r?.full_name}` : ''; })()} onChange={e => { setFormSearchField('sales_rep'); setFormSearchQuery(e?.target?.value); }} onFocus={() => { const r = salesReps?.find(x => x?.id === form?.sales_rep_id); setFormSearchField('sales_rep'); setFormSearchQuery(r ? `${r?.exec_code} - ${r?.full_name}` : ''); }} onBlur={() => setTimeout(() => setFormSearchField(null), 200)} placeholder="Search sales rep..." className={inputCls} />
+                {formSearchField === 'sales_rep' && getFilteredSalesReps(formSearchQuery)?.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-white border border-gray-300 shadow-lg rounded max-h-48 overflow-y-auto">
+                    <button type="button" onMouseDown={e => { e.preventDefault(); handleSalesRepChange(''); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                    {getFilteredSalesReps(formSearchQuery).map(r => (
+                      <button key={r?.id} type="button" onMouseDown={e => { e.preventDefault(); handleSalesRepChange(r?.id); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{r?.exec_code} - {r?.full_name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center">
               <span className={`${labelCls} w-28`} style={{ color: 'var(--color-primary)' }}>Location-Out</span>
-              <select value={form?.location_id} onChange={e => handleLocationChange(e?.target?.value)} className={inputCls}>
-                <option value="">-- Select Location --</option>
-                {locations?.map(l => <option key={l?.id} value={l?.id}>{l?.code} - {l?.name}</option>)}
-              </select>
+              <div className="flex-1 relative">
+                <input type="text" value={formSearchField === 'location' ? formSearchQuery : (() => { const l = locations?.find(x => x?.id === form?.location_id); return l ? `${l?.code} - ${l?.name}` : ''; })()} onChange={e => { setFormSearchField('location'); setFormSearchQuery(e?.target?.value); }} onFocus={() => { const l = locations?.find(x => x?.id === form?.location_id); setFormSearchField('location'); setFormSearchQuery(l ? `${l?.code} - ${l?.name}` : ''); }} onBlur={() => setTimeout(() => setFormSearchField(null), 200)} placeholder="Search location..." className={inputCls} />
+                {formSearchField === 'location' && getFilteredLocations(formSearchQuery)?.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-white border border-gray-300 shadow-lg rounded max-h-48 overflow-y-auto">
+                    <button type="button" onMouseDown={e => { e.preventDefault(); handleLocationChange(''); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                    {getFilteredLocations(formSearchQuery).map(l => (
+                      <button key={l?.id} type="button" onMouseDown={e => { e.preventDefault(); handleLocationChange(l?.id); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{l?.code} - {l?.name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Row 2: Balance Outstanding | Order Date | Delivery Date */}
@@ -613,10 +666,10 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
                   <th className={`${thCls} w-12`} style={{ color: 'var(--color-primary)' }}>Pack Unit</th>
                   <th className={`${thCls} w-12`} style={{ color: 'var(--color-primary)' }}>Btl Qty</th>
                   <th className={`${thCls} w-12`} style={{ color: 'var(--color-primary)' }}>Ctn Qty</th>
-                  <th className={`${thCls} w-20`} style={{ color: 'var(--color-primary)' }}>Price (Ex-Tax)</th>
+                  <th className={`${thCls} w-20 text-right`} style={{ color: 'var(--color-primary)' }}>Price (Ex-Tax)</th>
                   <th className={`${thCls} w-16`} style={{ color: 'var(--color-primary)' }}>Pre Tax</th>
                   <th className={`${thCls} w-16`} style={{ color: 'var(--color-primary)' }}>Tax Amt</th>
-                  <th className={`${thCls} w-20`} style={{ color: 'var(--color-primary)' }}>Price (Tax-Inc)</th>
+                  <th className={`${thCls} w-20 text-right`} style={{ color: 'var(--color-primary)' }}>Price (Tax-Inc)</th>
                   <th className={`${thCls} w-20`} style={{ color: 'var(--color-primary)' }}>Value (Tax-Inc)</th>
                   <th className={`${thCls} w-8`}></th>
                 </tr>
@@ -625,72 +678,36 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
                 {items?.map((item, idx) => (
                   <tr key={item?._key} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className={`${tdCls} text-center text-gray-400 text-xs`}>{idx + 1}</td>
-                    <td className={tdCls}>
-                      <input
-                        type="text"
-                        ref={getRef(idx, 'item_code')}
-                        value={item?.item_code}
-                        onChange={e => {
-                          handleItemChange(idx, 'item_code', e?.target?.value);
-                          const prod = products?.find(p => p?.product_code?.toLowerCase() === e?.target?.value?.toLowerCase());
-                          if (prod) handleProductSelect(idx, prod?.id);
-                        }}
-                        onKeyDown={e => handleLineKeyDown(e, idx, 'item_code')}
-                        className={textInputCls}
-                        placeholder="Code"
-                      />
+                    <td className={`${tdCls} relative`}>
+                      <input type="text" ref={getRef(idx, 'item_code')} value={item?.item_code} onChange={e => { const val = e?.target?.value; handleItemChange(idx, 'item_code', val); setDropdownIdx(idx); setDropdownField('code'); setDropdownQuery(val); const prod = products?.find(p => p?.product_code?.toLowerCase() === val?.toLowerCase()); if (prod) { handleProductSelect(idx, prod?.id); setDropdownIdx(null); } }} onFocus={() => { setDropdownIdx(idx); setDropdownField('code'); setDropdownQuery(item?.item_code || ''); }} onBlur={() => setTimeout(() => setDropdownIdx(null), 200)} onKeyDown={e => handleLineKeyDown(e, idx, 'item_code')} className={textInputCls} placeholder="Code" />
+                      {dropdownIdx === idx && dropdownField === 'code' && getFilteredProducts(dropdownQuery)?.length > 0 && (
+                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 shadow-lg rounded max-h-44 overflow-y-auto min-w-[200px]">
+                          {getFilteredProducts(dropdownQuery).map(p => (
+                            <button key={p?.id} type="button" onMouseDown={e => { e.preventDefault(); handleProductSelect(idx, p?.id); setDropdownIdx(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 flex gap-2"><span className="text-gray-400 font-mono w-16 flex-shrink-0">{p?.product_code}</span><span className="truncate">{p?.product_name}</span></button>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className={tdCls}>
-                      <select
-                        ref={getRef(idx, 'item_name')}
-                        value={item?.product_id || ''}
-                        onChange={e => handleProductSelect(idx, e?.target?.value)}
-                        onKeyDown={e => handleLineKeyDown(e, idx, 'item_name')}
-                        className="w-full h-6 px-1 text-xs border-0 focus:outline-none focus:ring-1 bg-transparent"
-                      >
-                        <option value="">Item name</option>
-                        {products?.map(p => <option key={p?.id} value={p?.id}>{p?.product_name}</option>)}
-                      </select>
+                    <td className={`${tdCls} relative`}>
+                      <input type="text" ref={getRef(idx, 'item_name')} value={item?.item_name} onChange={e => { handleItemChange(idx, 'item_name', e?.target?.value); setDropdownIdx(idx); setDropdownField('name'); setDropdownQuery(e?.target?.value); }} onFocus={() => { setDropdownIdx(idx); setDropdownField('name'); setDropdownQuery(item?.item_name || ''); }} onBlur={() => setTimeout(() => setDropdownIdx(null), 200)} onKeyDown={e => handleLineKeyDown(e, idx, 'item_name')} className={textInputCls} placeholder="Item name" />
+                      {dropdownIdx === idx && dropdownField === 'name' && getFilteredProducts(dropdownQuery)?.length > 0 && (
+                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 shadow-lg rounded max-h-44 overflow-y-auto min-w-[260px]">
+                          {getFilteredProducts(dropdownQuery).map(p => (
+                            <button key={p?.id} type="button" onMouseDown={e => { e.preventDefault(); handleProductSelect(idx, p?.id); setDropdownIdx(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 flex gap-2"><span className="truncate flex-1">{p?.product_name}</span><span className="text-gray-400 font-mono">{p?.product_code}</span></button>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className={tdCls}>
-                      <select
-                        value={item?.price_type_id || ''}
-                        onChange={async e => {
-                          const ptId = e?.target?.value || null;
-                          const pt = priceTypes?.find(p => p?.id === ptId);
-                          setItems(prev => {
-                            const u = [...prev];
-                            if (!u[idx]) return prev;
-                            u[idx] = { ...u[idx], price_type_id: ptId, price_type_name: pt?.price_type_name || '' };
-                            return u;
-                          });
-                          if (ptId && item?.item_code) {
-                            const priceData = await fetchPriceForProduct(item.item_code, form?.order_date || today(), ptId);
-                            if (priceData) {
-                              setItems(prev => {
-                                const u = [...prev];
-                                if (!u[idx]) return prev;
-                                const row = { ...u[idx], price_type_id: ptId, price_type_name: pt?.price_type_name || '' };
-                                if (priceData.price_tax_inc != null) row.price_tax_inc = priceData.price_tax_inc;
-                                if (priceData.price_ex_tax != null) { row.price_ex_tax = priceData.price_ex_tax; row._price_from_list = true; }
-                                row.tax_rate = priceData.tax_rate_percent ?? 0;
-                                const ctn = parseFloat(row.ctn_qty) || 0;
-                                const price = parseFloat(row.price_ex_tax) || 0;
-                                const tr = parseFloat(row.tax_rate) || 0;
-                                row.pre_tax = parseFloat((ctn * price).toFixed(2));
-                                row.tax_amt = parseFloat((row.pre_tax * tr / 100).toFixed(2));
-                                row.value_tax_inc = parseFloat((row.pre_tax + row.tax_amt).toFixed(2));
-                                u[idx] = row;
-                                return u;
-                              });
-                            }
-                          }
-                        }}
-                        className="w-full h-6 px-1 text-xs border-0 focus:outline-none focus:ring-1 bg-transparent"
-                      >
-                        <option value="">Select</option>
-                        {priceTypes?.map(p => <option key={p?.id} value={p?.id}>{p?.price_type_name}</option>)}
-                      </select>
+                    <td className={`${tdCls} relative`}>
+                      <input type="text" value={dropdownIdx === idx && dropdownField === 'price_type' ? dropdownQuery : (item?.price_type_name || '')} onChange={e => { setDropdownIdx(idx); setDropdownField('price_type'); setDropdownQuery(e?.target?.value); }} onFocus={() => { setDropdownIdx(idx); setDropdownField('price_type'); setDropdownQuery(item?.price_type_name || ''); }} onBlur={() => setTimeout(() => setDropdownIdx(null), 200)} placeholder="--" className={textInputCls} />
+                      {dropdownIdx === idx && dropdownField === 'price_type' && getFilteredPriceTypes(dropdownQuery)?.length > 0 && (
+                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 shadow-lg rounded max-h-40 overflow-y-auto min-w-[140px]">
+                          <button type="button" onMouseDown={e => { e.preventDefault(); setItems(prev => { const u = [...prev]; if (u[idx]) u[idx] = { ...u[idx], price_type_id: null, price_type_name: '' }; return u; }); setDropdownIdx(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                          {getFilteredPriceTypes(dropdownQuery).map(p => (
+                            <button key={p?.id} type="button" onMouseDown={async e => { e.preventDefault(); const ptId = p?.id; setItems(prev => { const u = [...prev]; if (u[idx]) u[idx] = { ...u[idx], price_type_id: ptId, price_type_name: p?.price_type_name || '' }; return u; }); setDropdownIdx(null); if (ptId && item?.item_code) { const priceData = await fetchPriceForProduct(item.item_code, form?.order_date || today(), ptId); if (priceData) { setItems(prev => { const u = [...prev]; if (!u[idx]) return prev; const row = { ...u[idx], price_type_id: ptId, price_type_name: p?.price_type_name || '' }; if (priceData.price_tax_inc != null) row.price_tax_inc = priceData.price_tax_inc; if (priceData.price_ex_tax != null) { row.price_ex_tax = priceData.price_ex_tax; row._price_from_list = true; } row.tax_rate = priceData.tax_rate_percent ?? row.tax_rate; const ctn = parseFloat(row.ctn_qty) || 0; const price = parseFloat(row.price_ex_tax) || 0; const tr = parseFloat(row.tax_rate) || 0; row.pre_tax = parseFloat((ctn * price).toFixed(2)); row.tax_amt = parseFloat((row.pre_tax * tr / 100).toFixed(2)); row.value_tax_inc = parseFloat((row.pre_tax + row.tax_amt).toFixed(2)); u[idx] = row; return u; }); } } }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{p?.price_type_name}</button>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className={`${tdCls} bg-gray-50`}><span className={readOnlyCls}>{item?.pack_unit ?? ''}</span></td>
                     <td className={tdCls}><input type="number" value={item?.btl_qty} onChange={e => handleItemChange(idx, 'btl_qty', e?.target?.value)} className={numInputCls} /></td>
@@ -705,7 +722,7 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
                         placeholder=""
                       />
                     </td>
-                    <td className={`${tdCls} relative bg-gray-50`}>
+                    <td className={`${tdCls} relative bg-gray-50 text-right`}>
                       {item?._price_from_list && (
                         <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-green-400" style={{ margin: '2px' }} title="Price auto-filled from price list" />
                       )}
@@ -713,7 +730,9 @@ const SalesOrderForm = ({ order, onClose, onSaved }) => {
                     </td>
                     <td className={`${tdCls} bg-gray-50 text-right`}><span className="px-1 text-xs text-gray-700">{fmt(item?.pre_tax) || '0.00'}</span></td>
                     <td className={`${tdCls} bg-gray-50 text-right`}><span className="px-1 text-xs text-gray-700">{fmt(item?.tax_amt) || '0.00'}</span></td>
-                    <td className={tdCls}><input type="number" value={item?.price_tax_inc} onChange={e => handleItemChange(idx, 'price_tax_inc', e?.target?.value)} className={numInputCls} placeholder="" step="0.01" /></td>
+                    <td className={`${tdCls} text-right`}>
+                      <input type="text" inputMode="decimal" value={focusedPriceTaxIncIdx === idx ? (item?.price_tax_inc ?? '') : fmt(item?.price_tax_inc)} onChange={e => handleItemChange(idx, 'price_tax_inc', e?.target?.value)} onFocus={() => setFocusedPriceTaxIncIdx(idx)} onBlur={() => setFocusedPriceTaxIncIdx(null)} className={numInputCls} placeholder="0.00" />
+                    </td>
                     <td className={`${tdCls} bg-gray-50 text-right`}><span className="px-1 text-xs text-gray-700">{fmt(item?.value_tax_inc) || '0.00'}</span></td>
                     <td className={`${tdCls} text-center`}>
                       <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600 text-sm font-bold">✕</button>

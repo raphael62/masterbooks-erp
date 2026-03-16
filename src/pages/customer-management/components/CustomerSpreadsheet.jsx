@@ -55,7 +55,7 @@ const CustomerSpreadsheet = () => {
     isFetchingRef.current = true;
     setIsLoading(true);
     try {
-      let query = supabase?.from('customers')?.select('id, customer_code, customer_name, business_executive, price_type, price_type_id, credit_limit, location, location_id, mobile, email, status, outstanding_balance')?.order('customer_name');
+      let query = supabase?.from('customers')?.select('id, customer_code, customer_name, business_name, business_executive, price_type, price_type_id, credit_limit, location, location_id, mobile, email, business_address, call_days, customer_type, status, outstanding_balance')?.order('customer_name');
       if (selectedCompany?.id) {
         query = query?.or(`company_id.eq.${selectedCompany?.id},company_id.is.null`);
       }
@@ -74,6 +74,10 @@ const CustomerSpreadsheet = () => {
         location_id: c?.location_id || null,
         mobile: c?.mobile || '',
         email: c?.email || '',
+        businessName: c?.business_name || '',
+        businessAddress: c?.business_address || '',
+        callDays: c?.call_days || '',
+        customerType: c?.customer_type || '',
         status: c?.status || 'Active',
         active: c?.status === 'Active',
         outstanding_balance: c?.outstanding_balance ?? 0,
@@ -292,9 +296,11 @@ const CustomerSpreadsheet = () => {
       custVendName: updatedCustomer?.customer_name || '',
       picName: updatedCustomer?.contact_person || updatedCustomer?.business_executive || '',
       salesPriceGroupName: updatedCustomer?.price_type || '',
+      price_type_id: updatedCustomer?.price_type_id ?? null,
       creditLimit: updatedCustomer?.credit_limit ? parseFloat(updatedCustomer?.credit_limit) : 0,
       businessExecutive: updatedCustomer?.business_executive || '',
       location: updatedCustomer?.location || '',
+      location_id: updatedCustomer?.location_id ?? null,
       mobile: updatedCustomer?.mobile || '',
       email: updatedCustomer?.email || '',
       status: updatedCustomer?.status || 'Active',
@@ -643,7 +649,16 @@ const CustomerSpreadsheet = () => {
                       </td>
                       <td className="border border-border px-1 py-0.5 text-center text-muted-foreground">{rowNum}</td>
                       <td className="border border-border px-2 py-0.5 font-medium" style={{ color: 'var(--color-primary)' }}>{customer?.custVendCode || '-'}</td>
-                      <td className="border border-border px-2 py-0.5" style={{ color: 'var(--color-primary)' }}>{customer?.custVendName || '-'}</td>
+                      <td className="border border-border px-2 py-0.5">
+                        <button
+                          type="button"
+                          onClick={e => { e?.stopPropagation(); setSelectedRow(customer); setEditCustomer(customer); setShowNewCustomerModal(true); }}
+                          className="text-left font-medium underline hover:no-underline focus:outline-none focus:ring-0"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          {customer?.custVendName || '-'}
+                        </button>
+                      </td>
                       <td className="border border-border px-2 py-0.5 text-foreground">{customer?.picName || '-'}</td>
                       <td className="border border-border px-2 py-0.5 text-foreground">{customer?.salesPriceGroupName || '-'}</td>
                       <td className="border border-border px-2 py-0.5 font-sans tabular-nums text-right text-foreground">

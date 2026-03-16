@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import { useCompanyLocation } from '../../../contexts/CompanyLocationContext';
@@ -113,6 +114,30 @@ const ImportEntityView = ({ entityKey, entityConfig, onImportComplete }) => {
     return { headers: hdrs, rows };
   };
 
+  const parseExcel = (arrayBuffer) => {
+    try {
+      const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: false, cellNF: false });
+      const sheetName = wb.SheetNames?.[0];
+      if (!sheetName) return { headers: [], rows: [] };
+      const sheet = wb.Sheets[sheetName];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+      if (!aoa?.length || aoa.length < 2) return { headers: [], rows: [] };
+      const headers = (aoa[0] || []).map((c) => String(c ?? '').trim());
+      const rows = aoa.slice(1).map((vals, idx) => {
+        const row = { _rowIndex: idx + 2 };
+        headers.forEach((h, i) => {
+          const v = vals[i];
+          row[h] = v != null && v !== '' ? String(v).trim() : '';
+        });
+        return row;
+      });
+      return { headers, rows };
+    } catch (err) {
+      console.error('Excel parse error:', err);
+      return { headers: [], rows: [] };
+    }
+  };
+
   const downloadTemplate = () => {
     if (!entityConfig) return;
     const hs = entityConfig.fields?.map((f) => f.key) || [];
@@ -147,10 +172,18 @@ const ImportEntityView = ({ entityKey, entityConfig, onImportComplete }) => {
       }
       setFile(f);
       setImportSuccess(null);
+      const isExcel = ext === 'xlsx' || ext === 'xls';
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e?.target?.result;
-        const { headers: hdrs, rows } = parseCSV(text);
+        let hdrs = [];
+        let rows = [];
+        if (isExcel) {
+          const ab = e?.target?.result;
+          if (ab) ({ headers: hdrs, rows } = parseExcel(ab));
+        } else {
+          const text = e?.target?.result;
+          if (text) ({ headers: hdrs, rows } = parseCSV(text));
+        }
         setHeaders(hdrs);
         setParsedData(rows);
 
@@ -168,7 +201,8 @@ const ImportEntityView = ({ entityKey, entityConfig, onImportComplete }) => {
         setColumnMapping(autoMap);
         validateDataInline(hdrs, rows, autoMap);
       };
-      reader.readAsText(f);
+      if (isExcel) reader.readAsArrayBuffer(f);
+      else reader.readAsText(f);
     },
     [entityConfig]
   );

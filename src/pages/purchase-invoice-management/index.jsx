@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/ui/AppLayout';
 import BreadcrumbNavigation from '../../components/ui/BreadcrumbNavigation';
 import PurchaseInvoiceSpreadsheet from './components/PurchaseInvoiceSpreadsheet';
@@ -6,6 +7,8 @@ import PurchaseInvoiceForm from './components/PurchaseInvoiceForm';
 import { supabase } from '../../lib/supabase';
 
 const PurchaseInvoiceManagement = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -22,29 +25,33 @@ const PurchaseInvoiceManagement = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const openId = location?.state?.openInvoiceId;
+    const returnTo = location?.state?.returnTo;
+    if (openId) {
+      navigate(location.pathname, { replace: true, state: returnTo ? { returnTo } : {} });
+      handleEdit({ id: openId });
+    }
+  }, [location?.state?.openInvoiceId]);
+
   const handleNew = () => {
     setSelectedInvoice(null);
     setShowForm(true);
   };
 
   const handleEdit = async (invoice) => {
-    // Fetch full invoice record to get all header fields (the spreadsheet row is a partial mapped object)
     try {
-      const { data: fullInvoice, error: invErr } = await supabase
-        ?.from('purchase_invoices')
-        ?.select('*')
-        ?.eq('id', invoice?.id)
-        ?.single();
-      if (invErr) throw invErr;
-
-      const { data: items } = await supabase
-        ?.from('purchase_invoice_items')
-        ?.select('*')
-        ?.eq('purchase_invoice_id', invoice?.id)
-        ?.order('sort_order');
-      setSelectedInvoice({ ...(fullInvoice || invoice), items: items || [] });
+      const [invRes, itemsRes, emptiesRes] = await Promise.all([
+        supabase?.from('purchase_invoices')?.select('*')?.eq('id', invoice?.id)?.single(),
+        supabase?.from('purchase_invoice_items')?.select('*')?.eq('purchase_invoice_id', invoice?.id)?.order('sort_order'),
+        supabase?.from('purchase_invoice_empties')?.select('empties_type, returned_qty')?.eq('invoice_id', invoice?.id),
+      ]);
+      const fullInvoice = invRes?.data || invoice;
+      const items = itemsRes?.data || [];
+      const empties = emptiesRes?.data || [];
+      setSelectedInvoice({ ...fullInvoice, items, empties });
     } catch {
-      setSelectedInvoice({ ...invoice, items: [] });
+      setSelectedInvoice({ ...invoice, items: [], empties: [] });
     }
     setShowForm(true);
   };
@@ -57,6 +64,9 @@ const PurchaseInvoiceManagement = () => {
     setShowForm(false);
     setSelectedInvoice(null);
     setRefreshKey(k => k + 1);
+    if (location?.state?.returnTo) {
+      navigate(location.state.returnTo);
+    }
   };
 
   const handleSaveNew = () => {
@@ -70,6 +80,9 @@ const PurchaseInvoiceManagement = () => {
   const handleClose = () => {
     setShowForm(false);
     setSelectedInvoice(null);
+    if (location?.state?.returnTo) {
+      navigate(location.state.returnTo);
+    }
   };
 
   return (

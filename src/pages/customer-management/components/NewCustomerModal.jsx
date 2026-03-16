@@ -107,6 +107,26 @@ const NewCustomerModal = ({ isOpen, onClose, onSaved, editItem }) => {
     }
   }, [isOpen, editItem]);
 
+  // When opening edit with text-only data (e.g. from import), resolve price_type_id and location_id from names so dropdowns show correctly
+  useEffect(() => {
+    if (!isOpen || !editItem?.id) return;
+    const priceName = (editItem?.salesPriceGroupName || '').trim();
+    const locationName = (editItem?.location || '').trim();
+    if (!priceName && !locationName) return;
+    setFormData(prev => {
+      let next = { ...prev };
+      if (priceName && !prev.priceTypeId && priceTypes?.length) {
+        const pt = priceTypes?.find(p => (p?.price_type_name || '').toLowerCase() === priceName.toLowerCase());
+        if (pt) next = { ...next, priceTypeId: pt.id, priceType: pt.price_type_name };
+      }
+      if (locationName && !prev.locationId && locations?.length) {
+        const loc = locations?.find(l => (l?.name || '').toLowerCase() === locationName.toLowerCase());
+        if (loc) next = { ...next, locationId: loc.id, location: loc.name };
+      }
+      return next;
+    });
+  }, [isOpen, editItem?.id, editItem?.salesPriceGroupName, editItem?.location, priceTypes, locations]);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -364,6 +384,9 @@ const NewCustomerModal = ({ isOpen, onClose, onSaved, editItem }) => {
                 className="w-full h-7 px-2 text-xs border border-gray-300 rounded focus:outline-none focus:border-primary bg-white"
               >
                 <option value="">Select Executive</option>
+                {formData?.businessExecutive && !executives?.some(ex => (ex?.full_name || '') === (formData?.businessExecutive || '')) && (
+                  <option value={formData.businessExecutive}>{formData.businessExecutive}</option>
+                )}
                 {executives?.map(ex => (
                   <option key={ex?.id} value={ex?.full_name}>{ex?.full_name}</option>
                 ))}

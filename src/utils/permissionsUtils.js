@@ -22,6 +22,7 @@ export const ROUTE_TO_MODULE = {
 
   '/sales-overview-dashboard': 'Sales Overview',
   '/customer-management': 'Customers',
+  '/customer-statement': 'Customer Statement',
   '/sales/customer-value-stmt': 'Customer Value Stmt',
   '/sales/customer-empties-stmt': 'Customer Empties Stmt',
   '/sales-order-management': 'Sales Orders',
@@ -43,6 +44,7 @@ export const ROUTE_TO_MODULE = {
   '/product-management': 'Products',
   '/stock-levels-by-location': 'Stock by Location',
   '/stock-movements': 'Stock Movements',
+  '/stock-transfer': 'Stock Transfer',
   '/returnable-glass-management': 'Returnable Glass',
   '/inventory/stock-on-hand': 'Inventory Overview',
   '/inventory/adjustments': 'Inventory Overview',

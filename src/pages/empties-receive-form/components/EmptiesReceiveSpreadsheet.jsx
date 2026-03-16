@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 const fmtDate = (d) => d ? new Date(d)?.toLocaleDateString('en-GB') : '';
 const fmtAmt = (v) => (parseFloat(v) || 0)?.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const EmptiesReceiveSpreadsheet = ({ rows, isLoading, selectedIds, onSelectAll, onSelectRow, onRowDoubleClick, sortConfig, onSort }) => {
+const EmptiesReceiveSpreadsheet = ({ rows, isLoading, selectedIds, onSelectAll, onSelectRow, onRowDoubleClick, onEditRow, sortConfig, onSort }) => {
   const SortIcon = ({ col }) => {
     if (sortConfig?.key !== col) return <Icon name="ChevronsUpDown" size={11} className="text-primary-foreground/50 ml-1" />;
     return sortConfig?.direction === 'asc'
@@ -85,7 +85,19 @@ const EmptiesReceiveSpreadsheet = ({ rows, isLoading, selectedIds, onSelectAll, 
                   <td className="px-2 py-1.5 text-center text-xs text-muted-foreground">{idx + 1}</td>
                   <td className={tdCls}><span className="font-mono text-primary text-xs">{row?.receive_no}</span></td>
                   <td className={tdCls}>{fmtDate(row?.receive_date)}</td>
-                  <td className={tdCls + ' max-w-[192px] truncate'}>{row?.customer_name || '—'}</td>
+                  <td className={tdCls + ' max-w-[192px] truncate'}>
+                    {onEditRow ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onEditRow(row); }}
+                        className="text-left w-full truncate text-primary hover:underline focus:outline-none focus:underline"
+                      >
+                        {row?.customer_name || '—'}
+                      </button>
+                    ) : (
+                      <span>{row?.customer_name || '—'}</span>
+                    )}
+                  </td>
                   <td className={tdCls}>{row?.location_name || '—'}</td>
                   <td className={tdCls + ' text-right tabular-nums'}>{row?.item_count || 0}</td>
                   <td className={tdCls + ' text-right tabular-nums font-medium'}>{fmtAmt(row?.total_value)}</td>

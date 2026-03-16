@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/ui/AppLayout';
 import BreadcrumbNavigation from '../../components/ui/BreadcrumbNavigation';
 import SalesInvoiceSpreadsheet from './components/SalesInvoiceSpreadsheet';
@@ -6,10 +7,26 @@ import SalesInvoiceForm from './components/SalesInvoiceForm';
 import { supabase } from '../../lib/supabase';
 
 const SalesInvoiceManagement = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnToRef = useRef(null);
+  const returnStateRef = useRef(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const openId = location?.state?.openInvoiceId;
+    const returnTo = location?.state?.returnTo;
+    const returnState = location?.state?.returnState;
+    if (openId) {
+      if (returnTo) returnToRef.current = returnTo;
+      if (returnState != null) returnStateRef.current = returnState;
+      navigate(location.pathname, { replace: true, state: returnTo ? { returnTo, returnState } : {} });
+      handleEdit({ id: openId });
+    }
+  }, [location?.state?.openInvoiceId]);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -29,21 +46,17 @@ const SalesInvoiceManagement = () => {
 
   const handleEdit = async (invoice) => {
     try {
-      const { data: fullInvoice, error: invErr } = await supabase
-        ?.from('sales_invoices')
-        ?.select('*')
-        ?.eq('id', invoice?.id)
-        ?.single();
-      if (invErr) throw invErr;
-
-      const { data: items } = await supabase
-        ?.from('sales_invoice_items')
-        ?.select('*')
-        ?.eq('invoice_id', invoice?.id)
-        ?.order('sort_order');
-      setSelectedInvoice({ ...(fullInvoice || invoice), items: items || [] });
+      const [invRes, itemsRes, emptiesRes] = await Promise.all([
+        supabase?.from('sales_invoices')?.select('*')?.eq('id', invoice?.id)?.single(),
+        supabase?.from('sales_invoice_items')?.select('*')?.eq('invoice_id', invoice?.id)?.order('sort_order'),
+        supabase?.from('sales_invoice_empties')?.select('empties_type, received_qty, sold_qty')?.eq('invoice_id', invoice?.id),
+      ]);
+      const fullInvoice = invRes?.data || invoice;
+      const items = itemsRes?.data || [];
+      const empties = emptiesRes?.data || [];
+      setSelectedInvoice({ ...fullInvoice, items, empties });
     } catch {
-      setSelectedInvoice({ ...invoice, items: [] });
+      setSelectedInvoice({ ...invoice, items: [], empties: [] });
     }
     setShowForm(true);
   };
@@ -54,11 +67,25 @@ const SalesInvoiceManagement = () => {
     setShowForm(false);
     setSelectedInvoice(null);
     setRefreshKey(k => k + 1);
+    const returnTo = returnToRef.current || location?.state?.returnTo;
+    const returnState = returnStateRef.current ?? location?.state?.returnState;
+    if (returnTo) {
+      returnToRef.current = null;
+      returnStateRef.current = null;
+      navigate(returnTo, { state: returnState != null ? returnState : undefined });
+    }
   };
 
   const handleClose = () => {
     setShowForm(false);
     setSelectedInvoice(null);
+    const returnTo = returnToRef.current || location?.state?.returnTo;
+    const returnState = returnStateRef.current ?? location?.state?.returnState;
+    if (returnTo) {
+      returnToRef.current = null;
+      returnStateRef.current = null;
+      navigate(returnTo, { state: returnState != null ? returnState : undefined });
+    }
   };
 
   return (

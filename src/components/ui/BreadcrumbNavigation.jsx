@@ -15,6 +15,7 @@ const BreadcrumbNavigation = ({ customBreadcrumbs = null }) => {
     '/customer-management': 'Customers',
     '/point-of-sale': 'Point of Sale',
     '/inventory-management': 'Inventory',
+    '/inventory-change-history': 'Change History',
     '/financial-reports': 'Reports',
     '/employee-management': 'People',
     '/system-settings': 'Settings',

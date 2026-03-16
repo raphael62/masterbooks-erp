@@ -23,6 +23,7 @@ const emptyItem = () => ({
   _is_returnable: false,
   _bottle_cost: 0,
   _plastic_cost: 0,
+  _empties_type: '',
 });
 
 const today = () => new Date()?.toISOString()?.slice(0, 10);
@@ -216,10 +217,36 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
   const [vehicles, setVehicles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [emptiesOwed, setEmptiesOwed] = useState({});
+  const [emptiesReturned, setEmptiesReturned] = useState({});
   const [showHistory, setShowHistory] = useState(false);
+  const [dropdownIdx, setDropdownIdx] = useState(null);
+  const [dropdownField, setDropdownField] = useState(null);
+  const [dropdownQuery, setDropdownQuery] = useState('');
+  const [formSearchField, setFormSearchField] = useState(null);
+  const [formSearchQuery, setFormSearchQuery] = useState('');
+  const [focusedPriceTaxIncIdx, setFocusedPriceTaxIncIdx] = useState(null);
   // Cache: vendorId -> price_type_id
   const vendorPriceTypeCache = useRef({});
   const rowRefs = useRef({});
+
+  const getFilteredProducts = useCallback((query) => {
+    if (!query || !products?.length) return products?.slice(0, 20) || [];
+    const q = String(query).toLowerCase().trim();
+    return products.filter(p => p?.product_code?.toLowerCase()?.includes(q) || p?.product_name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [products]);
+  const getFilteredSuppliers = useCallback((query) => {
+    if (!suppliers?.length) return [];
+    if (!query?.trim()) return suppliers.slice(0, 30);
+    const q = String(query).toLowerCase().trim();
+    return suppliers.filter(s => s?.supplier_code?.toLowerCase()?.includes(q) || s?.supplier_name?.toLowerCase()?.includes(q)).slice(0, 30);
+  }, [suppliers]);
+  const getFilteredLocations = useCallback((query) => {
+    if (!locations?.length) return [];
+    if (!query?.trim()) return locations.slice(0, 20);
+    const q = String(query).toLowerCase().trim();
+    return locations.filter(l => l?.code?.toLowerCase()?.includes(q) || l?.name?.toLowerCase()?.includes(q)).slice(0, 20);
+  }, [locations]);
 
   const getRef = (rowIdx, col) => {
     const key = `${rowIdx}-${col}`;
@@ -251,7 +278,12 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (col === 'item_code' || col === 'item_name') {
-      // Move to ctn_qty of same row
+      const query = col === 'item_code' ? items[idx]?.item_code : items[idx]?.item_name;
+      const matches = getFilteredProducts(query || '');
+      if (matches?.length > 0) {
+        handleProductSelect(idx, matches[0]?.id);
+        setDropdownIdx(null);
+      }
       focusCell(idx, 'ctn_qty');
     } else if (col === 'ctn_qty') {
       // Add new row if current is last row
@@ -307,7 +339,7 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
 
       const prodRes = await supabase
         .from('products')
-        .select('id, product_code, product_name, pack_unit, is_taxable, bottle_cost, plastic_cost, is_returnable')
+        .select('id, product_code, product_name, pack_unit, is_taxable, bottle_cost, plastic_cost, is_returnable, empties_type')
         .order('product_name');
       if (prodRes.error) console.error('products query error:', prodRes.error);
       setProducts(prodRes?.data || []);
@@ -330,6 +362,115 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
   useEffect(() => {
     loadReferenceData();
   }, []);
+
+  // Fetch owed empties (from all saved transactions, same pattern as sales invoice)
+  const fetchOwedEmpties = useCallback(async () => {
+    const supplierId = form?.supplier_id;
+    if (!supplierId) {
+      setEmptiesOwed({});
+      return;
+    }
+    try {
+      const { data: invData } = await supabase
+        .from('purchase_invoices')
+        .select('id')
+        .eq('supplier_id', supplierId);
+
+      const pastInvIds = (invData || [])
+        .filter(inv => inv?.id !== invoiceId)
+        .map(inv => inv?.id)
+        .filter(Boolean);
+
+      const receivedByType = {};
+      const emptiesPurchasedByType = {};
+      if (pastInvIds.length > 0) {
+        const { data: itemsData } = await supabase
+          .from('purchase_invoice_items')
+          .select('product_id, product_code, product_name, ctn_qty, btl_qty, purchase_invoice_id')
+          .in('purchase_invoice_id', pastInvIds);
+
+        const productIds = [...new Set((itemsData || []).map(r => r?.product_id).filter(Boolean))];
+        let prodMap = {};
+        if (productIds.length > 0) {
+          const { data: prodData } = await supabase.from('products').select('id, empties_type, is_returnable').in('id', productIds);
+          prodMap = Object.fromEntries((prodData || []).map(p => [p?.id, { empties_type: p?.empties_type || 'Other', is_returnable: p?.is_returnable }]));
+        }
+        const isEmptiesProduct = (r) => {
+          const n = String(r?.product_name || '').toLowerCase();
+          const c = String(r?.product_code || '').toLowerCase();
+          return n.includes('empties') || c.includes('empties');
+        };
+        for (const r of itemsData || []) {
+          const meta = prodMap[r?.product_id];
+          const et = meta?.empties_type || 'Other';
+          const qty = parseFloat(r?.ctn_qty) || parseFloat(r?.btl_qty) || 0;
+          if (isEmptiesProduct(r)) {
+            emptiesPurchasedByType[et] = (emptiesPurchasedByType[et] || 0) + qty;
+          } else if (meta?.is_returnable && qty > 0) {
+            receivedByType[et] = (receivedByType[et] || 0) + qty;
+          }
+        }
+      }
+
+      const { data: dispData } = await supabase
+        .from('empties_dispatch_header')
+        .select('id')
+        .eq('supplier_id', supplierId);
+      const dispIds = (dispData || []).map(r => r?.id).filter(Boolean);
+
+      const dispatchedByType = {};
+      if (dispIds.length > 0) {
+        const { data: dispItems } = await supabase
+          .from('empties_dispatch_items')
+          .select('empties_type, qty')
+          .in('header_id', dispIds);
+        for (const r of dispItems || []) {
+          const et = r?.empties_type || 'Other';
+          dispatchedByType[et] = (dispatchedByType[et] || 0) + (parseFloat(r?.qty) || 0);
+        }
+      }
+
+      const { data: piEmptiesRaw } = await supabase
+        .from('purchase_invoice_empties')
+        .select('invoice_id, empties_type, returned_qty');
+      const { data: piForEmpties } = await supabase
+        .from('purchase_invoices')
+        .select('id, supplier_id')
+        .eq('supplier_id', supplierId);
+      const piLookup = Object.fromEntries((piForEmpties || []).map(i => [i?.id, i]));
+      for (const r of piEmptiesRaw || []) {
+        const inv = piLookup[r?.invoice_id];
+        if (!inv || inv?.id === invoiceId) continue;
+        const et = r?.empties_type || 'Other';
+        dispatchedByType[et] = (dispatchedByType[et] || 0) + (parseFloat(r?.returned_qty) || 0);
+      }
+
+      const owed = {};
+      const allTypes = new Set([...Object.keys(receivedByType), ...Object.keys(dispatchedByType), ...Object.keys(emptiesPurchasedByType)]);
+      for (const et of allTypes) {
+        const recv = receivedByType[et] || 0;
+        const disp = dispatchedByType[et] || 0;
+        const emptiesPurch = emptiesPurchasedByType[et] || 0;
+        owed[et] = Math.max(0, recv - disp - emptiesPurch);
+      }
+      setEmptiesOwed(owed);
+    } catch (err) {
+      console.error('fetchOwedEmpties error:', err);
+      setEmptiesOwed({});
+    }
+  }, [form?.supplier_id, invoiceId]);
+
+  useEffect(() => {
+    if (form?.supplier_id) fetchOwedEmpties();
+  }, [fetchOwedEmpties]);
+
+  const prevSupplierIdRef = useRef(null);
+  useEffect(() => {
+    if (prevSupplierIdRef.current != null && prevSupplierIdRef.current !== form?.supplier_id) {
+      setEmptiesReturned({});
+    }
+    prevSupplierIdRef.current = form?.supplier_id;
+  }, [form?.supplier_id]);
 
   // Populate form when editing an existing invoice
   useEffect(() => {
@@ -376,17 +517,43 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
         _is_returnable: !isNaN(parseFloat(it?.empties_value)) && parseFloat(it?.empties_value) !== 0,
         _bottle_cost: it?.bottle_cost ?? 0,
         _plastic_cost: it?.plastic_cost ?? 0,
+        _empties_type: products?.find(x => x?.id === it?.product_id)?.empties_type || 'Other',
       })));
     } else {
       setItems([emptyItem(), emptyItem(), emptyItem(), emptyItem()]);
     }
-  }, [invoice?.id]);
+    if (invoice?.empties?.length) {
+      const recv = {};
+      for (const e of invoice.empties) {
+        const et = e?.empties_type || 'Other';
+        recv[et] = parseFloat(e?.returned_qty) || 0;
+      }
+      setEmptiesReturned(recv);
+    } else {
+      setEmptiesReturned({});
+    }
+  }, [invoice?.id, invoice?.empties]);
+
+  useEffect(() => {
+    if (!products?.length) return;
+    setItems(prev => {
+      if (!prev?.length) return prev;
+      const next = prev.map(it => {
+        if (!it?.product_id) return it;
+        const et = products.find(p => p?.id === it?.product_id)?.empties_type || 'Other';
+        if ((it._empties_type || 'Other') === et) return it;
+        return { ...it, _empties_type: et };
+      });
+      const changed = next.some((n, i) => n._empties_type !== (prev[i]?._empties_type));
+      return changed ? next : prev;
+    });
+  }, [products]);
 
   // Generate invoice number in format PI-yyyy-mm-dd-xxx
   const generateInvoiceNo = useCallback(async () => {
     if (isEdit) return;
     try {
-      const dateStr = form?.invoice_date || today();
+      const dateStr = form?.delivery_date || form?.invoice_date || today();
       const prefix = `PI-${dateStr}`;
       const { data } = await supabase?.from('purchase_invoices')
         ?.select('invoice_no')
@@ -403,16 +570,16 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
       const newNo = `${prefix}-${String(seq)?.padStart(3, '0')}`;
       setForm(f => ({ ...f, invoice_no: newNo }));
     } catch {
-      const dateStr = form?.invoice_date || today();
+      const dateStr = form?.delivery_date || form?.invoice_date || today();
       setForm(f => ({ ...f, invoice_no: `PI-${dateStr}-001` }));
     }
-  }, [form?.invoice_date, isEdit]);
+  }, [form?.delivery_date, form?.invoice_date, isEdit]);
 
   useEffect(() => {
-    if (!isEdit && !form?.invoice_no) {
+    if (!isEdit && form?.delivery_date) {
       generateInvoiceNo();
     }
-  }, []);
+  }, [form?.delivery_date, isEdit, generateInvoiceNo]);
 
   const handleFormChange = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -454,6 +621,12 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
       const updated = [...prev];
       const item = { ...updated?.[idx], [field]: value };
 
+      if (field === 'price_tax_inc') {
+        const raw = String(value).replace(/,/g, '');
+        if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return prev;
+        item.price_tax_inc = raw;
+      }
+
       // If user manually edits price_ex_tax, clear the auto-fill indicator
       if (field === 'price_ex_tax') {
         item._price_from_list = false;
@@ -485,7 +658,7 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
       if (field === 'price_tax_inc') {
         // price_tax_inc is the primary editable price field
         const ctn = parseFloat(item?.ctn_qty) || 0;
-        const priceTaxInc = parseFloat(value) || 0;
+        const priceTaxInc = parseFloat(String(value).replace(/,/g, '')) || 0;
         const taxRate = parseFloat(item?.tax_rate) || 0;
 
         // Derive price_ex_tax from price_tax_inc with 6 decimal precision
@@ -555,6 +728,7 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
       _is_returnable: isReturnable,
       _bottle_cost: bottleCost,
       _plastic_cost: plasticCost,
+      _empties_type: prod?.empties_type || 'Other',
       // empties_value and breakages_value will be recalculated after price is known
       empties_value: '',
       breakages_value: '',
@@ -577,7 +751,7 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
     if (!priceData) {
       const lastPrice = await fetchLastPurchasePrice(prod?.id);
       if (lastPrice != null) {
-        priceData = { price: lastPrice, price_tax_inc: null, pack_unit: null, unit_of_measure: null, tax_rate_percent: 0, vat_type: 'exclusive' };
+        priceData = { price: lastPrice, price_tax_inc: lastPrice, pack_unit: null, unit_of_measure: null, tax_rate_percent: 0, vat_type: 'exclusive' };
       }
     }
 
@@ -591,15 +765,16 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
 
         const item = { ...updated[rowIdx] };
 
-        // Auto-populate price_tax_inc from price list (tax-inclusive price)
-        if (priceData.price_tax_inc !== null && priceData.price_tax_inc !== undefined) {
-          item.price_tax_inc = priceData.price_tax_inc;
-        }
-
-        // Auto-populate price_ex_tax derived from price_tax_inc minus VAT (6 decimal precision)
+        // Auto-populate cost price: price_tax_inc = cost (tax-inclusive), price_ex_tax = cost (ex-tax)
+        const taxRate = priceData.tax_rate_percent || 0;
         if (priceData.price !== null && priceData.price !== undefined) {
           item.price_ex_tax = priceData.price;
           item._price_from_list = true;
+          item.price_tax_inc = (priceData.price_tax_inc != null && priceData.price_tax_inc > 0)
+            ? priceData.price_tax_inc
+            : parseFloat((priceData.price * (1 + taxRate / 100)).toFixed(6));
+        } else if (priceData.price_tax_inc != null && priceData.price_tax_inc > 0) {
+          item.price_tax_inc = priceData.price_tax_inc;
         }
 
         // Store tax_rate on the item for use in calculations
@@ -610,15 +785,15 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
           item.pack_unit = priceData.pack_unit;
         }
 
-        // Recalculate derived fields
-        const btl = parseFloat(item.btl_qty) || 0;
+        // Recalculate derived fields - keep ctn_qty blank when no quantity
+        const btlRaw = item.btl_qty;
+        const btl = parseFloat(btlRaw);
         const pack = parseFloat(item.pack_unit) || 1;
-        item.ctn_qty = pack > 0 ? btl / pack : 0;
+        const hasBtl = btlRaw !== '' && btlRaw !== null && !isNaN(btl);
+        item.ctn_qty = (hasBtl && pack > 0) ? parseFloat((btl / pack).toFixed(4)) : '';
         const ctn = parseFloat(item.ctn_qty) || 0;
         const price = parseFloat(item.price_ex_tax) || 0;
         item.pre_tax = ctn * price;
-        // Auto-calculate tax_amt = pre_tax * tax_rate / 100
-        const taxRate = parseFloat(item.tax_rate) || 0;
         item.tax_amt = parseFloat((item.pre_tax * taxRate / 100).toFixed(2));
         // tax_inc_value = pre_tax + tax_amt (= ctn_qty * price_tax_inc when prices are consistent)
         item.tax_inc_value = parseFloat((item.pre_tax + item.tax_amt).toFixed(2));
@@ -679,6 +854,72 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
     const n = parseFloat(v);
     if (isNaN(n) || n === 0) return '';
     return n?.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
+  const isEmptiesProduct = (item) => {
+    const name = String(item?.item_name || '').toLowerCase();
+    const code = String(item?.item_code || '').toLowerCase();
+    return name.includes('empties') || code.includes('empties');
+  };
+
+  // Products value excludes empties purchased/refund; empties product line items go to empties position
+  const productsValue = React.useMemo(() => {
+    if (!items?.length) return 0;
+    return items.reduce((sum, it) => {
+      if (isEmptiesProduct(it)) return sum;
+      return sum + (parseFloat(it?.tax_inc_value) || 0);
+    }, 0);
+  }, [items]);
+  const emptiesProductsValue = React.useMemo(() => {
+    if (!items?.length) return 0;
+    return items.reduce((sum, it) => {
+      if (!isEmptiesProduct(it)) return sum;
+      return sum + (parseFloat(it?.tax_inc_value) || 0);
+    }, 0);
+  }, [items]);
+
+  const expectedByType = React.useMemo(() => {
+    const m = {};
+    for (const it of items || []) {
+      const et = it._empties_type || 'Other';
+      const ctn = parseFloat(it?.ctn_qty) || 0;
+      const btl = parseFloat(it?.btl_qty) || 0;
+      const qty = ctn !== 0 ? ctn : btl;
+      const isReturnable = it?._is_returnable && !isEmptiesProduct(it);
+      if (isReturnable) {
+        m[et] = (m[et] || 0) + qty;
+      } else if (isEmptiesProduct(it)) {
+        m[et] = (m[et] || 0) - qty;
+      }
+    }
+    return m;
+  }, [items]);
+
+  const emptiesSummary = React.useMemo(() => {
+    const allTypes = new Set([
+      ...Object.keys(emptiesOwed || {}),
+      ...Object.keys(expectedByType || {}),
+      ...Object.keys(emptiesReturned || {}),
+    ].filter(Boolean));
+    return [...allTypes].sort().map(et => {
+      const owed = emptiesOwed?.[et] ?? 0;
+      const expected = expectedByType?.[et] ?? 0;
+      const returned = parseFloat(emptiesReturned?.[et]) || 0;
+      const os = Math.max(0, owed + expected - returned);
+      return { empties_type: et, owed, expected, returned, os };
+    });
+  }, [emptiesOwed, expectedByType, emptiesReturned]);
+
+  const handleEmptiesReturnedChange = (emptiesType, value) => {
+    setEmptiesReturned(prev => {
+      const v = parseFloat(value);
+      if (value === '' || value == null) {
+        const next = { ...prev };
+        delete next[emptiesType];
+        return next;
+      }
+      return { ...prev, [emptiesType]: isNaN(v) ? value : v };
+    });
   };
 
   const handleSave = async (andNew = false) => {
@@ -763,6 +1004,17 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
         if (itemsErr) throw itemsErr;
       }
 
+      await supabase?.from('purchase_invoice_empties')?.delete()?.eq('invoice_id', invoiceIdToUse);
+      const emptiesToSave = emptiesSummary?.filter(r => (parseFloat(r?.returned) || 0) !== 0) || [];
+      if (emptiesToSave.length > 0) {
+        const emptiesData = emptiesToSave.map(r => ({
+          invoice_id: invoiceIdToUse,
+          empties_type: r?.empties_type,
+          returned_qty: parseFloat(r?.returned) || 0,
+        }));
+        await supabase?.from('purchase_invoice_empties')?.insert(emptiesData);
+      }
+
       // --- Supplier Ledger (Accounts Payable) entry using Invoice Date ---
       // Delete existing AP entry for this invoice (for edits) then re-insert
       await supabase?.from('supplier_ledger')
@@ -776,15 +1028,54 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
         reference_no: form?.invoice_no,
         supplier_id: form?.supplier_id || null,
         supplier_name: form?.supplier_name,
-        description: `Purchase Invoice ${form?.invoice_no}${form?.supplier_inv_no ? ` (Supplier Inv: ${form?.supplier_inv_no})` : ''}`,
-        debit_amount: 0,
-        credit_amount: parseFloat(totals?.tax_inc_value) || 0,
+        description: 'Purchase Invoice',
+        debit_amount: parseFloat(productsValue) || 0,
+        credit_amount: 0,
         purchase_invoice_id: invoiceIdToUse,
       };
       const { error: apErr } = await supabase?.from('supplier_ledger')?.insert(apEntry);
       if (apErr) {
-        // Log but don't block save — table may not exist yet
         console.warn('supplier_ledger insert warning:', apErr?.message);
+      }
+
+      await supabase?.from('supplier_ledger')?.delete()
+        ?.eq('purchase_invoice_id', invoiceIdToUse)
+        ?.eq('transaction_type', 'empties_invoice');
+      const emptiesVal = parseFloat(totals?.empties_value) || 0;
+      if (emptiesVal > 0 && form?.empties_inv_no) {
+        const emptiesEntry = {
+          transaction_date: form?.invoice_date,
+          transaction_type: 'empties_invoice',
+          reference_no: form?.empties_inv_no,
+          supplier_id: form?.supplier_id || null,
+          supplier_name: form?.supplier_name,
+          description: 'Empties Invoice',
+          debit_amount: emptiesVal,
+          credit_amount: 0,
+          purchase_invoice_id: invoiceIdToUse,
+        };
+        await supabase?.from('supplier_ledger')?.insert(emptiesEntry);
+      }
+
+      // Empties purchased (positive) or empties refund (negative) - affects empties position, not products
+      await supabase?.from('supplier_ledger')?.delete()
+        ?.eq('purchase_invoice_id', invoiceIdToUse)
+        ?.eq('transaction_type', 'empties_purchase_invoice');
+      const emptiesProdVal = parseFloat(emptiesProductsValue) || 0;
+      const hasEmptiesValue = Math.abs(emptiesProdVal) >= 0.01;
+      if (hasEmptiesValue) {
+        const emptiesProdEntry = {
+          transaction_date: form?.invoice_date,
+          transaction_type: 'empties_purchase_invoice',
+          reference_no: form?.invoice_no,
+          supplier_id: form?.supplier_id || null,
+          supplier_name: form?.supplier_name,
+          description: emptiesProdVal > 0 ? 'Empties Purchase' : 'Empties Refund',
+          debit_amount: emptiesProdVal > 0 ? emptiesProdVal : 0,
+          credit_amount: emptiesProdVal < 0 ? Math.abs(emptiesProdVal) : 0,
+          purchase_invoice_id: invoiceIdToUse,
+        };
+        await supabase?.from('supplier_ledger')?.insert(emptiesProdEntry);
       }
 
       // --- Stock Movements using Delivery Date (only if delivery_date is set) ---
@@ -897,9 +1188,9 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
     >
       <div className="bg-white rounded-lg shadow-2xl flex flex-col" style={{ width: '96vw', maxWidth: '1280px', maxHeight: '95vh' }}>
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-3 rounded-t-lg" style={{ backgroundColor: 'var(--color-primary)' }}>
-          <h2 className="text-base font-semibold text-white">{isEdit ? 'Edit Purchase Invoice' : 'New Purchase Invoice'}</h2>
-          <button onClick={onClose} className="text-white hover:text-gray-200 text-xl leading-none font-bold">✕</button>
+        <div className="flex items-center justify-between px-5 py-3 rounded-t-lg bg-primary shadow-sm">
+          <h2 className="text-base font-semibold text-primary-foreground">{isEdit ? 'Edit Purchase Invoice' : 'New Purchase Invoice'}</h2>
+          <button onClick={onClose} className="text-primary-foreground hover:text-primary-foreground/80 text-xl leading-none font-bold">✕</button>
         </div>
 
         {/* Scrollable Body */}
@@ -914,29 +1205,47 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
             <div className="space-y-1.5">
               <div className="flex items-center">
                 <span className={`${labelCls} w-28`} style={{ color: 'var(--color-primary)' }}>Supplier</span>
-                <select
-                  value={form?.supplier_id}
-                  onChange={e => handleSupplierChange(e?.target?.value)}
-                  className={inputCls}
-                >
-                  <option value="">-- Select Supplier --</option>
-                  {suppliers?.map(s => (
-                    <option key={s?.id} value={s?.id}>{s?.supplier_code} - {s?.supplier_name}</option>
-                  ))}
-                </select>
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={formSearchField === 'supplier' ? formSearchQuery : (form?.supplier_name || '')}
+                    onChange={e => { setFormSearchField('supplier'); setFormSearchQuery(e?.target?.value); }}
+                    onFocus={() => { setFormSearchField('supplier'); setFormSearchQuery(form?.supplier_name || ''); }}
+                    onBlur={() => setTimeout(() => setFormSearchField(null), 200)}
+                    placeholder="Search supplier..."
+                    className={inputCls}
+                  />
+                  {formSearchField === 'supplier' && getFilteredSuppliers(formSearchQuery)?.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-white border border-gray-300 shadow-lg rounded max-h-48 overflow-y-auto">
+                      <button type="button" onMouseDown={e => { e.preventDefault(); handleSupplierChange(''); setFormSearchField(null); setFormSearchQuery(''); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                      {getFilteredSuppliers(formSearchQuery).map(s => (
+                        <button key={s?.id} type="button" onMouseDown={e => { e.preventDefault(); handleSupplierChange(s?.id); setFormSearchField(null); setFormSearchQuery(''); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{s?.supplier_code} - {s?.supplier_name}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center">
                 <span className={`${labelCls} w-28`} style={{ color: 'var(--color-primary)' }}>Location-In</span>
-                <select
-                  value={form?.location_id}
-                  onChange={e => handleLocationChange(e?.target?.value)}
-                  className={inputCls}
-                >
-                  <option value="">-- Select Location --</option>
-                  {locations?.map(l => (
-                    <option key={l?.id} value={l?.id}>{l?.code} - {l?.name}</option>
-                  ))}
-                </select>
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={formSearchField === 'location' ? formSearchQuery : (() => { const l = locations?.find(x => x?.id === form?.location_id); return l ? `${l?.code} - ${l?.name}` : ''; })()}
+                    onChange={e => { setFormSearchField('location'); setFormSearchQuery(e?.target?.value); }}
+                    onFocus={() => { const l = locations?.find(x => x?.id === form?.location_id); setFormSearchField('location'); setFormSearchQuery(l ? `${l?.code} - ${l?.name}` : ''); }}
+                    onBlur={() => setTimeout(() => setFormSearchField(null), 200)}
+                    placeholder="Search location..."
+                    className={inputCls}
+                  />
+                  {formSearchField === 'location' && getFilteredLocations(formSearchQuery)?.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-0.5 bg-white border border-gray-300 shadow-lg rounded max-h-48 overflow-y-auto">
+                      <button type="button" onMouseDown={e => { e.preventDefault(); handleLocationChange(''); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 text-gray-500">— Clear —</button>
+                      {getFilteredLocations(formSearchQuery).map(l => (
+                        <button key={l?.id} type="button" onMouseDown={e => { e.preventDefault(); handleLocationChange(l?.id); setFormSearchField(null); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 block">{l?.code} - {l?.name}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center">
                 <span className={`${labelCls} w-28`} style={{ color: 'var(--color-primary)' }}>Due Date</span>
@@ -1122,36 +1431,84 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
                 {items?.map((item, idx) => (
                   <tr key={item?._key} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className={`${tdCls} text-center text-gray-400 text-xs`}>{idx + 1}</td>
-                    {/* Item Code - searchable */}
-                    <td className={tdCls}>
+                    {/* Item Code - filterable */}
+                    <td className={`${tdCls} relative`}>
                       <input
                         type="text"
                         ref={getRef(idx, 'item_code')}
-                        value={item?.item_code}
+                        value={dropdownIdx === idx && dropdownField === 'code' ? dropdownQuery : (item?.item_code || '')}
                         onChange={e => {
-                          handleItemChange(idx, 'item_code', e?.target?.value);
-                          const prod = products?.find(p => p?.product_code?.toLowerCase() === e?.target?.value?.toLowerCase());
-                          if (prod) handleProductSelect(idx, prod?.id);
+                          const val = e?.target?.value;
+                          handleItemChange(idx, 'item_code', val);
+                          setDropdownIdx(idx);
+                          setDropdownField('code');
+                          setDropdownQuery(val);
+                          const prod = products?.find(p => p?.product_code?.toLowerCase() === val?.toLowerCase());
+                          if (prod) { handleProductSelect(idx, prod?.id); setDropdownIdx(null); }
                         }}
+                        onFocus={() => {
+                          setDropdownIdx(idx);
+                          setDropdownField('code');
+                          setDropdownQuery(item?.item_code || '');
+                        }}
+                        onBlur={() => setTimeout(() => setDropdownIdx(null), 200)}
                         onKeyDown={e => handleLineKeyDown(e, idx, 'item_code')}
                         className={textInputCls}
                         placeholder="Code"
                       />
+                      {dropdownIdx === idx && dropdownField === 'code' && getFilteredProducts(dropdownQuery)?.length > 0 && (
+                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 shadow-lg rounded max-h-44 overflow-y-auto" style={{ minWidth: '200px' }}>
+                          {getFilteredProducts(dropdownQuery).map(p => (
+                            <button
+                              key={p?.id}
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); handleProductSelect(idx, p?.id); setDropdownIdx(null); }}
+                              className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 flex gap-2"
+                            >
+                              <span className="text-gray-400 font-mono w-16 flex-shrink-0">{p?.product_code}</span>
+                              <span className="truncate">{p?.product_name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    {/* Item Name - dropdown */}
-                    <td className={tdCls}>
-                      <select
+                    {/* Item Name - filterable */}
+                    <td className={`${tdCls} relative`}>
+                      <input
+                        type="text"
                         ref={getRef(idx, 'item_name')}
-                        value={item?.product_id || ''}
-                        onChange={e => handleProductSelect(idx, e?.target?.value)}
+                        value={dropdownIdx === idx && dropdownField === 'name' ? dropdownQuery : (item?.item_name || '')}
+                        onChange={e => {
+                          handleItemChange(idx, 'item_name', e?.target?.value);
+                          setDropdownIdx(idx);
+                          setDropdownField('name');
+                          setDropdownQuery(e?.target?.value);
+                        }}
+                        onFocus={() => {
+                          setDropdownIdx(idx);
+                          setDropdownField('name');
+                          setDropdownQuery(item?.item_name || '');
+                        }}
+                        onBlur={() => setTimeout(() => setDropdownIdx(null), 200)}
                         onKeyDown={e => handleLineKeyDown(e, idx, 'item_name')}
-                        className="w-full h-6 px-1 text-xs border-0 focus:outline-none focus:ring-1 bg-transparent"
-                      >
-                        <option value="">Item name</option>
-                        {products?.map(p => (
-                          <option key={p?.id} value={p?.id}>{p?.product_name}</option>
-                        ))}
-                      </select>
+                        className={textInputCls}
+                        placeholder="Item name"
+                      />
+                      {dropdownIdx === idx && dropdownField === 'name' && getFilteredProducts(dropdownQuery)?.length > 0 && (
+                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 shadow-lg rounded max-h-44 overflow-y-auto" style={{ minWidth: '260px' }}>
+                          {getFilteredProducts(dropdownQuery).map(p => (
+                            <button
+                              key={p?.id}
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); handleProductSelect(idx, p?.id); setDropdownIdx(null); }}
+                              className="w-full text-left px-2 py-1.5 text-xs hover:bg-primary/10 flex gap-2"
+                            >
+                              <span className="truncate flex-1">{p?.product_name}</span>
+                              <span className="text-gray-400 font-mono">{p?.product_code}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className={tdCls}>
                       <input type="number" value={item?.pack_unit} onChange={e => handleItemChange(idx, 'pack_unit', e?.target?.value)} className={numInputCls} placeholder="" />
@@ -1179,8 +1536,8 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
                         {item?.product_id ? fmt(item?.breakages_value) : ''}
                       </span>
                     </td>
-                    {/* Price Ex-Tax with auto-fill indicator - READ ONLY, 6 decimals */}
-                    <td className={`${tdCls} relative bg-gray-50`}>
+                    {/* Price Ex-Tax with auto-fill indicator - READ ONLY, 6 decimals, right-aligned */}
+                    <td className={`${tdCls} relative bg-gray-50 text-right`}>
                       {item?._price_from_list && (
                         <span
                           className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-green-400"
@@ -1203,9 +1560,18 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
                     <td className={`${tdCls} bg-gray-50 text-right`}>
                       <span className="px-1 text-xs text-gray-700">{fmt(item?.tax_amt) || '0.00'}</span>
                     </td>
-                    {/* Price Tax-Inc - EDITABLE */}
-                    <td className={tdCls}>
-                      <input type="number" value={item?.price_tax_inc} onChange={e => handleItemChange(idx, 'price_tax_inc', e?.target?.value)} className={numInputCls} placeholder="" step="0.01" />
+                    {/* Price Tax-Inc - EDITABLE, 2 decimals */}
+                    <td className={`${tdCls} text-right`}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={focusedPriceTaxIncIdx === idx ? (item?.price_tax_inc ?? '') : fmt(item?.price_tax_inc)}
+                        onChange={e => handleItemChange(idx, 'price_tax_inc', e?.target?.value)}
+                        onFocus={() => setFocusedPriceTaxIncIdx(idx)}
+                        onBlur={() => setFocusedPriceTaxIncIdx(null)}
+                        className={numInputCls}
+                        placeholder="0.00"
+                      />
                     </td>
                     {/* Tax Inc Value - READ ONLY, 2 decimals */}
                     <td className={`${tdCls} bg-gray-50 text-right`}>
@@ -1251,6 +1617,53 @@ const PurchaseInvoiceForm = ({ invoice, onClose, onSaved, onSaveNew }) => {
             <span className="text-xs text-gray-500">Price auto-filled from price list (editable)</span>
           </div>
 
+          {/* Empties - Expected & Returned */}
+          <div className="mt-4 border border-gray-300 rounded overflow-hidden">
+            <div className="px-3 py-2 bg-gray-100 border-b border-gray-300">
+              <span className="text-xs font-semibold" style={{ color: 'var(--color-primary)' }}>Empties - Expected &amp; Returned</span>
+            </div>
+            <table className="w-full border-collapse text-xs" style={{ minWidth: '400px' }}>
+              <thead>
+                <tr>
+                  <th className={`${thCls} text-left`} style={{ color: 'var(--color-primary)' }}>PRODUCT</th>
+                  <th className={`${thCls} w-20 text-right`} style={{ color: 'var(--color-primary)' }}>OWED</th>
+                  <th className={`${thCls} w-20 text-right`} style={{ color: 'var(--color-primary)' }}>EXPECTED</th>
+                  <th className={`${thCls} w-24 text-right`} style={{ color: 'var(--color-primary)' }}>RETURNED</th>
+                  <th className={`${thCls} w-20 text-right`} style={{ color: 'var(--color-primary)' }}>O/S</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emptiesSummary?.length > 0 ? (
+                  emptiesSummary.map(row => (
+                    <tr key={row?.empties_type} className="bg-white hover:bg-gray-50">
+                      <td className={`${tdCls} px-2 py-1.5 font-medium`}>{row?.empties_type}</td>
+                      <td className={`${tdCls} px-2 py-1.5 text-right tabular-nums`}>{fmtNum(row?.owed) || '0'}</td>
+                      <td className={`${tdCls} px-2 py-1.5 text-right tabular-nums`}>{fmtNum(row?.expected) || '0'}</td>
+                      <td className={`${tdCls} px-2 py-1.5`}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={emptiesReturned?.[row?.empties_type] !== undefined ? emptiesReturned[row?.empties_type] : (row?.returned || '')}
+                          onChange={e => handleEmptiesReturnedChange(row?.empties_type, e?.target?.value)}
+                          className="w-full h-6 px-1 text-xs border border-gray-300 rounded text-right focus:outline-none focus:ring-1"
+                          placeholder="0"
+                          title="Returned to supplier"
+                        />
+                      </td>
+                      <td className={`${tdCls} px-2 py-1.5 text-right tabular-nums font-semibold`}>{fmtNum(row?.os) || '0'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className={`${tdCls} px-2 py-4 text-center text-gray-400`}>
+                      Select a supplier and add returnable items to see empties summary
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Footer Actions */}

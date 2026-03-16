@@ -62,7 +62,36 @@ export const ENTITY_CONFIGS = [
       { key: 'business_executive', label: 'Sales Rep', required: false, type: 'text' },
       { key: 'credit_limit', label: 'Credit Limit', required: false, type: 'number' },
     ],
-    insertFn: async (record) => supabase?.from('customers')?.insert(record),
+    sampleRow: {
+      customer_code: 'CUST001',
+      customer_name: 'Acme Store',
+      business_name: 'Acme Store Ltd',
+      mobile: '0244123456',
+      email: 'store@example.com',
+      business_address: '123 High Street',
+      customer_type: 'Retail',
+      price_type: '',
+      business_executive: '',
+      credit_limit: '0',
+    },
+    insertFn: async (record) => {
+      const num = (v) => (v === '' || v == null ? null : parseFloat(v));
+      const str = (v) => (v == null || v === '' ? null : String(v).trim());
+      const insertRecord = {
+        customer_code: str(record?.customer_code) ?? null,
+        customer_name: str(record?.customer_name) ?? null,
+        business_name: str(record?.business_name) || null,
+        mobile: str(record?.mobile) || null,
+        email: str(record?.email) || null,
+        business_address: str(record?.business_address) || null,
+        customer_type: str(record?.customer_type) || null,
+        price_type: str(record?.price_type) || null,
+        business_executive: str(record?.business_executive) || null,
+        credit_limit: num(record?.credit_limit) ?? 0,
+        status: 'Active',
+      };
+      return supabase?.from('customers')?.insert(insertRecord);
+    },
   },
   {
     key: 'vendors',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/ui/AppLayout';
 import BreadcrumbNavigation from '../../components/ui/BreadcrumbNavigation';
 import Icon from '../../components/AppIcon';
@@ -8,6 +9,8 @@ import EmptiesReceiveModal from './components/EmptiesReceiveModal';
 import EmptiesReceiveSearchPanel from './components/EmptiesReceiveSearchPanel';
 
 const EmptiesReceiveForm = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [records, setRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -63,6 +66,36 @@ const EmptiesReceiveForm = () => {
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+  // Open modal when navigated from customer empties statement (openHeaderId in state)
+  useEffect(() => {
+    const openHeaderId = location.state?.openHeaderId;
+    if (!openHeaderId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: header, error: he } = await supabase
+          .from('empties_receive_header')
+          .select('id, receive_no, receive_date, customer_id, customer_name, location_id, location_name, notes, total_value, status, created_at')
+          .eq('id', openHeaderId)
+          .single();
+        if (he || !header) return;
+        const { data: items } = await supabase
+          .from('empties_receive_items')
+          .select('*')
+          .eq('header_id', openHeaderId)
+          .order('sort_order');
+        if (!cancelled) {
+          setEditRecord({ ...header, items: items || [] });
+          setModalOpen(true);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      } catch (e) {
+        console.error('Error opening empties receive:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [location.state?.openHeaderId, location.pathname, navigate]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -190,6 +223,7 @@ const EmptiesReceiveForm = () => {
             onSelectAll={handleSelectAll}
             onSelectRow={handleSelectRow}
             onRowDoubleClick={handleRowDoubleClick}
+            onEditRow={handleRowDoubleClick}
             sortConfig={sortConfig}
             onSort={handleSort}
           />

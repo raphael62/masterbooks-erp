@@ -24,6 +24,8 @@ import ProductManagement from './pages/product-management';
 import ReturnableGlassManagement from './pages/returnable-glass-management';
 import StockMovements from './pages/stock-movements';
 import StockLevelsByLocation from './pages/stock-levels-by-location';
+import StockTransfer from './pages/stock-transfer';
+import InventoryChangeHistory from './pages/inventory-change-history';
 import LocationManagement from './pages/location-management';
 import CompanyManagement from './pages/company-management';
 import ImportData from './pages/import-data';
@@ -44,6 +46,8 @@ import ProductCategoriesManagement from './pages/product-categories-management';
 import UnitsOfMeasureManagement from './pages/units-of-measure-management';
 import EmptiesTypesManagement from './pages/empties-types-management';
 import SupplierStatement from './pages/supplier-statement';
+import CustomerStatement from './pages/customer-statement';
+import CustomerEmptiesStatement from './pages/customer-empties-statement';
 import SupplierEmptiesStatement from './pages/supplier-empties-statement';
 import SupplierPayments from './pages/supplier-payments';
 import ChartOfAccountsManagement from './pages/chart-of-accounts-management';
@@ -67,6 +71,8 @@ const Routes = () => {
         <Route path="/returnable-glass-management" element={<ReturnableGlassManagement />} />
         <Route path="/stock-movements" element={<StockMovements />} />
         <Route path="/stock-levels-by-location" element={<StockLevelsByLocation />} />
+        <Route path="/stock-transfer" element={<StockTransfer />} />
+        <Route path="/inventory-change-history" element={<InventoryChangeHistory />} />
         <Route path="/financial-reports" element={<FinancialReports />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/employee-management" element={<EmployeeManagement />} />
@@ -103,6 +109,8 @@ const Routes = () => {
         <Route path="/units-of-measure-management" element={<UnitsOfMeasureManagement />} />
         <Route path="/empties-types-management" element={<EmptiesTypesManagement />} />
         <Route path="/supplier-statement" element={<SupplierStatement />} />
+        <Route path="/customer-statement" element={<CustomerStatement />} />
+        <Route path="/sales/customer-empties-stmt" element={<CustomerEmptiesStatement />} />
         <Route path="/supplier-empties-statement" element={<SupplierEmptiesStatement />} />
         <Route path="/supplier-payments" element={<SupplierPayments />} />
         <Route path="/chart-of-accounts-management" element={<ChartOfAccountsManagement />} />

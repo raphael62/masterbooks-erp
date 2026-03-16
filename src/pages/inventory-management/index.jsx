@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/ui/AppLayout';
 import BreadcrumbNavigation from '../../components/ui/BreadcrumbNavigation';
 import Icon from '../../components/AppIcon';
@@ -16,6 +17,7 @@ import LocationSelector from './components/LocationSelector';
 import NewProductModal from './components/NewProductModal';
 
 const InventoryManagement = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('stock-levels');
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
@@ -52,8 +54,8 @@ const InventoryManagement = () => {
     setIsAdjustmentModalOpen(true);
   };
 
-  const handleStockTransfer = (item) => {
-    console.log('Opening stock transfer modal for:', item);
+  const handleStockTransfer = () => {
+    navigate('/stock-transfer');
   };
 
   const handlePhysicalCount = () => {

@@ -35,8 +35,9 @@ const EmptiesDispatchForm = () => {
       let query = supabase
         ?.from('empties_dispatch_header')
         ?.select(`
-          id, dispatch_no, dispatch_date, supplier_id, supplier_name,
-          location_id, location_name, total_value, status, created_at,
+          id, dispatch_no, dispatch_date, credit_note_no, credit_note_date,
+          supplier_id, supplier_name, location_id, location_name,
+          po_number, delivery_note, total_value, status, created_at,
           empties_dispatch_items(id)
         `);
 
