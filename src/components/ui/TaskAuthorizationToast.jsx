@@ -77,27 +77,26 @@ const TaskAuthorizationToast = () => {
       {toasts?.map((toast) => (
         <div
           key={toast?.id}
-          className="w-full bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden"
+          className="w-full bg-card rounded-lg shadow-lg border border-border overflow-hidden animate-slideInRight"
           style={{ animation: 'slideInRight 0.3s ease-out' }}
         >
           {/* Toast Header */}
           <div
-            className="flex items-center justify-between px-3 py-2"
-            style={{ backgroundColor: 'var(--color-primary)' }}
+            className="flex items-center justify-between px-3 py-2 bg-primary"
           >
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
-                <span className="text-white text-xs font-bold">
+              <div className="w-6 h-6 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+                <span className="text-primary-foreground text-xs font-bold">
                   {toast?.requesterName?.charAt(0)?.toUpperCase() || 'U'}
                 </span>
               </div>
-              <span className="text-white text-xs font-semibold truncate" style={{ maxWidth: '200px' }}>
-                ECOUNT
+              <span className="text-primary-foreground text-xs font-semibold truncate" style={{ maxWidth: '200px' }}>
+                Task Authorization
               </span>
             </div>
             <button
               onClick={() => removeToast(toast?.id)}
-              className="text-white hover:text-gray-200 text-sm leading-none ml-2"
+              className="text-primary-foreground hover:text-primary-foreground/80 text-sm leading-none ml-2 transition-opacity"
             >
               ✕
             </button>
@@ -105,23 +104,23 @@ const TaskAuthorizationToast = () => {
 
           {/* Toast Body */}
           <div className="px-3 py-2.5">
-            <p className="text-xs text-gray-800 leading-relaxed">
+            <p className="text-xs text-foreground leading-relaxed">
               <span className="font-semibold">{toast?.requesterName}</span>
               {' has requested ['}
-              <span className="font-medium" style={{ color: 'var(--color-primary)' }}>{toast?.module}</span>
+              <span className="font-medium text-primary">{toast?.module}</span>
               {'] Task Authorization.'}
               {toast?.actionType && (
                 <>
                   <br />
                   {'(Action: '}
-                  <span className="font-medium text-red-600">{toast?.actionType}</span>
+                  <span className="font-medium text-error">{toast?.actionType}</span>
                   {')'}
                 </>
               )}
               {toast?.recordRef && (
                 <>
                   <br />
-                  <span className="text-gray-500">Ref: {toast?.recordRef}</span>
+                  <span className="text-muted-foreground">Ref: {toast?.recordRef}</span>
                 </>
               )}
             </p>
@@ -131,14 +130,13 @@ const TaskAuthorizationToast = () => {
           <div className="flex items-center gap-2 px-3 pb-2.5">
             <button
               onClick={() => handleAccept(toast)}
-              className="flex-1 h-7 text-xs font-semibold text-white rounded transition-colors"
-              style={{ backgroundColor: 'var(--color-primary)' }}
+              className="flex-1 h-7 text-xs font-semibold text-primary-foreground rounded transition-colors bg-primary hover:bg-primary/90"
             >
               Accept
             </button>
             <button
               onClick={() => handleReject(toast)}
-              className="flex-1 h-7 text-xs font-semibold bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+              className="flex-1 h-7 text-xs font-semibold bg-muted text-foreground rounded hover:bg-accent transition-colors border border-border"
             >
               Reject
             </button>

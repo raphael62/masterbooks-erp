@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import Icon from '../../../components/AppIcon';
 
 const STATUS_COLORS = {
-  Draft: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  Active: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  Archived: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  Draft: 'bg-warning/10 text-warning border-warning/20',
+  Active: 'bg-success/10 text-success border-success/20',
+  Archived: 'bg-muted text-muted-foreground border-border'
 };
 
 const BOMSpreadsheet = ({
