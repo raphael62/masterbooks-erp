@@ -41,6 +41,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      components:
+        specifier: ^0.1.0
+        version: 0.1.0
       d3:
         specifier: ^7.9.0
         version: 7.9.0
@@ -1226,6 +1229,9 @@ packages:
   commander@7.2.0:
     resolution: {integrity: sha512-QrWXB+ZQSVPmIWIhtEO9H+gwHaMGYiF5ChvoJ+K9ZGHG/sVsa6yiesAD1GC/x46sET00Xlwo1u49RVVVzvcSkw==}
     engines: {node: '>= 10'}
+
+  components@0.1.0:
+    resolution: {integrity: sha512-4xKUO3dL9LBs8WiOKy2kvLfnwKZLps9xDT5cFS0GL4UiXrr/dNUYus7Uf1bRPG66cUpEmwFAWVOlE9cxQgG+QA==}
 
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
@@ -3405,6 +3411,8 @@ snapshots:
   commander@4.1.1: {}
 
   commander@7.2.0: {}
+
+  components@0.1.0: {}
 
   concat-map@0.0.1: {}
 

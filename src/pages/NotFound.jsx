@@ -6,39 +6,35 @@ import Icon from 'components/AppIcon';
 const NotFound = () => {
   const navigate = useNavigate();
 
-  const handleGoHome = () => {
-    navigate('/');
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="text-center max-w-md">
         <div className="flex justify-center mb-6">
-          <div className="relative">
-            <h1 className="text-9xl font-bold text-primary opacity-20">404</h1>
+          <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center">
+            <Icon name="AlertCircle" size={48} className="text-muted-foreground" />
           </div>
         </div>
 
-        <h2 className="text-2xl font-medium text-onBackground mb-2">Page Not Found</h2>
-        <p className="text-onBackground/70 mb-8">
-          The page you're looking for doesn't exist. Let's get you back!
+        <h2 className="text-3xl font-bold text-foreground mb-2">Page Not Found</h2>
+        <p className="text-muted-foreground mb-8 text-base">
+          The page you're looking for doesn't exist or has been moved. Let's get you back on track.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button
-            variant="primary"
-            icon={<Icon name="ArrowLeft" />}
-            iconPosition="left"
+            variant="outline"
+            icon={<Icon name="ArrowLeft" size={18} />}
             onClick={() => window.history?.back()}
+            className="flex-1"
           >
             Go Back
           </Button>
 
           <Button
-            variant="outline"
-            icon={<Icon name="Home" />}
-            iconPosition="left"
-            onClick={handleGoHome}
+            variant="default"
+            icon={<Icon name="Home" size={18} />}
+            onClick={() => navigate('/')}
+            className="flex-1"
           >
             Back to Home
           </Button>
